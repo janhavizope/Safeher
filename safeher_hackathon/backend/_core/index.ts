@@ -262,12 +262,6 @@ async function startServer() {
 
   app.post("/api/mappls/directions", async (req, res) => {
     try {
-      const restKey = getMapplsRestKey();
-      if (!restKey) {
-        res.status(400).json({ message: "Mappls REST key missing. Set MAPPLS_REST_API_KEY." });
-        return;
-      }
-
       const body = req.body as {
         origin?: { lat?: number; lng?: number };
         destination?: { lat?: number; lng?: number };
@@ -293,6 +287,75 @@ async function startServer() {
 
       const profile = body.profile === "walking" ? "walking" : "driving";
       const coordinates = `${origin.lng},${origin.lat};${destination.lng},${destination.lat}`;
+
+      const fallbackToOsrm = async () => {
+        const osrmProfile = profile === "walking" ? "foot" : "driving";
+        const osrmParams = new URLSearchParams({
+          overview: "full",
+          geometries: "polyline",
+          alternatives: body.alternatives === false ? "false" : "true",
+          steps: body.steps === false ? "false" : "true",
+        });
+
+        const osrmUrl = `https://router.project-osrm.org/route/v1/${osrmProfile}/${coordinates}?${osrmParams.toString()}`;
+        const osrmResponse = await fetch(osrmUrl);
+        if (!osrmResponse.ok) {
+          const errorText = await osrmResponse.text();
+          res.status(502).json({
+            message: "Both Mappls and fallback routing failed",
+            details: errorText,
+          });
+          return;
+        }
+
+        const osrm = (await osrmResponse.json()) as {
+          routes?: Array<{
+            distance?: number;
+            duration?: number;
+            geometry?: string;
+            legs?: Array<{
+              distance?: number;
+              duration?: number;
+              steps?: Array<{
+                distance?: number;
+                duration?: number;
+                name?: string;
+                maneuver?: { type?: string; modifier?: string };
+              }>;
+            }>;
+          }>;
+        };
+
+        res.status(200).json({
+          routes: (osrm.routes || []).map((route) => ({
+            distance: route.distance,
+            duration: route.duration,
+            geometry: route.geometry,
+            legs: (route.legs || []).map((leg) => ({
+              distance: leg.distance,
+              duration: leg.duration,
+              steps: (leg.steps || []).map((step) => ({
+                distance: step.distance,
+                duration: step.duration,
+                name: step.name,
+                maneuver: {
+                  instruction: step.name || "Continue",
+                  modifier: step.maneuver?.modifier,
+                  type: step.maneuver?.type,
+                },
+              })),
+            })),
+          })),
+          provider: "osrm-fallback",
+        });
+      };
+
+      const restKey = getMapplsRestKey();
+      if (!restKey) {
+        await fallbackToOsrm();
+        return;
+      }
+
       const params = new URLSearchParams({
         steps: body.steps === false ? "false" : "true",
         alternatives: body.alternatives === false ? "false" : "true",
@@ -306,6 +369,11 @@ async function startServer() {
 
       const url = `https://apis.mapmyindia.com/advancedmaps/v1/${encodeURIComponent(restKey)}/route_adv/${profile}/${coordinates}?${params.toString()}`;
       const upstream = await fetch(url);
+
+      if (!upstream.ok) {
+        await fallbackToOsrm();
+        return;
+      }
 
       const text = await upstream.text();
       res.status(upstream.status).type("application/json").send(text);
