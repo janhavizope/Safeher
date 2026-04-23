@@ -28,31 +28,6 @@ const LEAFLET_JS_ID = "leaflet-js";
 const LEAFLET_CSS_HREF = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
 const LEAFLET_JS_SRC = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
 
-async function loadMapplsScript(mapKey: string) {
-  return new Promise<void>((resolve, reject) => {
-    if (window.MapmyIndia && window.L) {
-      resolve();
-      return;
-    }
-
-    const existing = document.getElementById("mappls-sdk");
-    if (existing) {
-      existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", () => reject(new Error("Mappls SDK failed to load")), { once: true });
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.id = "mappls-sdk";
-    script.src = `https://apis.mapmyindia.com/advancedmaps/v1/${encodeURIComponent(mapKey)}/map_load?v=1.5`;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Mappls SDK failed to load"));
-    document.head.appendChild(script);
-  });
-}
-
 function ensureLeafletCss() {
   if (document.getElementById(LEAFLET_CSS_ID)) {
     return;
@@ -154,41 +129,10 @@ export function MapView({
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<any | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
-  const [resolvedCenter, setResolvedCenter] = useState<LatLng>(initialCenter);
-  const [isFallbackMap, setIsFallbackMap] = useState(false);
-
-  const getMapplsKey = async (): Promise<string> => {
-    const envKey = import.meta.env.VITE_FRONTEND_FORGE_API_KEY;
-    if (envKey) {
-      console.log("[Map] Using VITE_FRONTEND_FORGE_API_KEY");
-      return envKey;
-    }
-
-    const response = await fetch("/api/maps/config");
-    if (!response.ok) {
-      console.error("[Map] /api/maps/config failed:", response.status);
-      return "";
-    }
-    const data = (await response.json()) as {
-      mapplsMapApiKey?: string;
-      mapplsRestApiKey?: string;
-      mapsApiKey?: string;
-    };
-    console.log("[Map] Got config from /api/maps/config", {
-      mapplsMapApiKey: data.mapplsMapApiKey ? "SET" : "EMPTY",
-      mapplsRestApiKey: data.mapplsRestApiKey ? "SET" : "EMPTY",
-    });
-    const selectedKey = data.mapplsMapApiKey || data.mapplsRestApiKey || data.mapsApiKey || "";
-    if (!selectedKey) {
-      console.error("[Map] No map key available!");
-    }
-    return selectedKey;
-  };
 
   const init = usePersistFn(async () => {
     const userLocation = await getBrowserLocation();
     const center = userLocation ?? initialCenter;
-    setResolvedCenter(center);
 
     if (!mapContainer.current) {
       console.error("Map container not found");
@@ -198,41 +142,6 @@ export function MapView({
     safeRemoveMap(map.current);
     clearLeafletContainer(mapContainer.current);
     map.current = null;
-    setIsFallbackMap(false);
-
-    const mapKey = await getMapplsKey();
-
-    if (mapKey) {
-      await loadMapplsScript(mapKey);
-      if (!window.MapmyIndia) {
-        const err = "Mappls SDK could not be loaded. Check your key and API settings.";
-        setMapError(err);
-        if (onMapError) onMapError(err);
-        return;
-      }
-
-      map.current = new window.MapmyIndia.Map(mapContainer.current, {
-        center: [center.lat, center.lng],
-        zoom: initialZoom,
-        zoomControl: true,
-        hybrid: false,
-        traffic: false,
-      });
-
-      if (userLocation && map.current && window.L) {
-        window.L.marker([userLocation.lat, userLocation.lng], {
-          title: "Your current location",
-        }).addTo(map.current);
-
-        map.current.setView([userLocation.lat, userLocation.lng], Math.max(initialZoom, 14));
-      }
-
-      if (onMapReady) {
-        onMapReady(map.current);
-      }
-      setMapError(null);
-      return;
-    }
 
     await loadLeafletFallback();
     if (!window.L) {
@@ -242,7 +151,6 @@ export function MapView({
       return;
     }
 
-    setIsFallbackMap(true);
     map.current = window.L.map(mapContainer.current).setView([center.lat, center.lng], initialZoom);
 
     window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -316,7 +224,7 @@ export function MapView({
   return (
     <div className={cn("relative w-full h-full", className)} style={{ minHeight: "400px" }}>
       <span className="absolute right-2 top-2 z-[999] rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-800 border border-emerald-300">
-        {isFallbackMap ? "Live Location Map" : "Map Ready"}
+        Live Location Map
       </span>
       <div ref={mapContainer} className="w-full h-full" style={{ minHeight: "400px" }} />
     </div>
