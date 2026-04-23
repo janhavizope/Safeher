@@ -224,36 +224,35 @@ function parseCoordinatesFromQuery(query: string): LatLng | null {
   return { lat, lng };
 }
 
-async function geocodeWithNominatim(query: string): Promise<LatLng | null> {
-  const url = new URL("https://nominatim.openstreetmap.org/search");
-  url.searchParams.set("q", query);
-  url.searchParams.set("format", "jsonv2");
-  url.searchParams.set("limit", "1");
-  url.searchParams.set("addressdetails", "1");
-  url.searchParams.set("countrycodes", "in");
+type GeocodeResult = {
+  location: LatLng;
+  formattedAddress?: string;
+};
 
-  const response = await fetch(url.toString(), {
-    headers: {
-      Accept: "application/json",
-    },
-  });
+async function geocodeWithBackend(query: string): Promise<GeocodeResult | null> {
+  const url = new URL("/api/maps/geocode", window.location.origin);
+  url.searchParams.set("address", query);
+
+  const response = await fetch(url.toString());
   if (!response.ok) {
     return null;
   }
 
-  const results = (await response.json()) as Array<{ lat?: string; lon?: string; display_name?: string }>;
-  const first = results[0];
-  if (!first?.lat || !first?.lon) {
-    return null;
-  }
+  const data = (await response.json()) as {
+    location?: { lat?: number; lng?: number };
+    formattedAddress?: string;
+  };
 
-  const lat = Number(first.lat);
-  const lng = Number(first.lon);
+  const lat = Number(data.location?.lat);
+  const lng = Number(data.location?.lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
     return null;
   }
 
-  return { lat, lng };
+  return {
+    location: { lat, lng },
+    formattedAddress: data.formattedAddress,
+  };
 }
 
 const LEAFLET_CSS_ID = "safe-route-leaflet-css";
@@ -664,35 +663,28 @@ export default function SafeRoute() {
       return typedCoordinates;
     }
 
-    const queryVariants = [
-      query,
-      `${query}, Pune`,
-      `${query}, Maharashtra`,
-      `${query}, India`,
-    ];
+    const normalizedQuery = query.replace(/\s+/g, " ").trim();
+    const queryVariants = Array.from(new Set([
+      normalizedQuery,
+      `${normalizedQuery}, Pune`,
+      `${normalizedQuery}, Pune, Maharashtra`,
+      `${normalizedQuery}, Maharashtra`,
+      `${normalizedQuery}, India`,
+    ]));
 
     for (const variant of queryVariants) {
-      const geocoded = await geocodeWithNominatim(variant);
+      const geocoded = await geocodeWithBackend(variant);
       if (!geocoded) {
         continue;
       }
 
-      setSelectedDestination(geocoded);
-      setSelectedDestinationLabel(variant);
-      setDestinationQuery(variant);
+      const label = geocoded.formattedAddress || variant;
+      setSelectedDestination(geocoded.location);
+      setSelectedDestinationLabel(label);
+      setDestinationQuery(label);
       setSuggestions([]);
-      placeDestinationMarker(geocoded);
-      return geocoded;
-    }
-
-    const geocoded = await geocodeWithNominatim(query);
-    if (geocoded) {
-      setSelectedDestination(geocoded);
-      setSelectedDestinationLabel(query);
-      setDestinationQuery(query);
-      setSuggestions([]);
-      placeDestinationMarker(geocoded);
-      return geocoded;
+      placeDestinationMarker(geocoded.location);
+      return geocoded.location;
     }
 
     return null;
@@ -710,7 +702,7 @@ export default function SafeRoute() {
     }
 
     if (!destination) {
-      toast.error("Enter a valid destination or choose one from suggestions.");
+      toast.error("Destination not found. Try full area name (e.g. 'SSPU Kiwale, Pune') or pin on map.");
       return;
     }
 
