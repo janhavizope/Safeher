@@ -1,0 +1,1 @@
+ALTER TABLE `incidents` MODIFY COLUMN `mediaUrls` json;

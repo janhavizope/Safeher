@@ -1,0 +1,11 @@
+<svg width="1920" height="1080" viewBox="0 0 1920 1080" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1920" height="1080" fill="#000000"/>
+  <g filter="url(#blur1)">
+    <circle cx="1020" cy="505" r="4" fill="#FF5A5A"/>
+  </g>
+  <defs>
+    <filter id="blur1" x="1008" y="493" width="24" height="24" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="2"/>
+    </filter>
+  </defs>
+</svg>
