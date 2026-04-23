@@ -12,8 +12,9 @@ export default function SafeWalk() {
   const [, setLocation] = useLocation();
   const mapRef = useRef<any>(null);
   const userMarkerRef = useRef<any>(null);
+  const watchIdRef = useRef<number | null>(null);
+  const latestPosRef = useRef<[number, number] | null>(null);
   const [activeSession, setActiveSession] = useState<{ token: string; destLat?: number; destLng?: number } | null>(null);
-  const [isLocating, setIsLocating] = useState(false);
   const [currentPos, setCurrentPos] = useState<[number, number] | null>(null);
   const [destination, setDestination] = useState<[number, number] | null>(null);
 
@@ -22,13 +23,40 @@ export default function SafeWalk() {
 
   const handleMapReady = (map: any) => {
     mapRef.current = map;
-    // Set initial view to user location if possible
-    navigator.geolocation.getCurrentPosition((pos) => {
-      const coords: [number, number] = [pos.coords.latitude, pos.coords.longitude];
-      setCurrentPos(coords);
-      map.setView(coords, 15);
-    });
   };
+
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      toast.error("Live GPS is not supported on this device.");
+      return;
+    }
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        const coords: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+        latestPosRef.current = coords;
+        setCurrentPos(coords);
+        if (mapRef.current && !activeSession) {
+          mapRef.current.setView(coords, 15);
+        }
+      },
+      () => {
+        // Keep existing location if a transient GPS read fails.
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 20000,
+        maximumAge: 0,
+      }
+    );
+
+    return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+      watchIdRef.current = null;
+    };
+  }, [activeSession]);
 
   /**
    * Picking Destination
@@ -77,19 +105,17 @@ export default function SafeWalk() {
     if (!activeSession) return;
 
     const interval = setInterval(() => {
-      navigator.geolocation.getCurrentPosition((pos) => {
-        const coords: [number, number] = [pos.coords.latitude, pos.coords.longitude];
-        setCurrentPos(coords);
-        updateWalkMutation.mutate({
-          token: activeSession.token,
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude
-        });
+      const latest = latestPosRef.current;
+      if (!latest) return;
+      updateWalkMutation.mutate({
+        token: activeSession.token,
+        lat: latest[0],
+        lng: latest[1]
       });
     }, 5000); // Pulse location every 5 seconds
 
     return () => clearInterval(interval);
-  }, [activeSession]);
+  }, [activeSession, updateWalkMutation]);
 
   const handleStartWalk = async () => {
     if (!currentPos) return;

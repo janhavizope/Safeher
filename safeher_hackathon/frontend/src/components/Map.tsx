@@ -130,6 +130,9 @@ export function MapView({
 }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<any | null>(null);
+  const locationMarkerRef = useRef<any | null>(null);
+  const accuracyCircleRef = useRef<any | null>(null);
+  const watchIdRef = useRef<number | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
 
   const init = usePersistFn(async () => {
@@ -160,7 +163,7 @@ export function MapView({
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     }).addTo(map.current);
 
-    const locationMarker = window.L.circleMarker([center.lat, center.lng], {
+    locationMarkerRef.current = window.L.circleMarker([center.lat, center.lng], {
       radius: 8,
       color: "#0f172a",
       weight: 2,
@@ -168,13 +171,13 @@ export function MapView({
       fillOpacity: 0.95,
     }).addTo(map.current);
 
-    locationMarker.bindPopup(
+    locationMarkerRef.current.bindPopup(
       userLocation
         ? "Your live location"
         : "Selected map location"
     );
 
-    window.L.circle([center.lat, center.lng], {
+    accuracyCircleRef.current = window.L.circle([center.lat, center.lng], {
       radius: 120,
       color: "#22c55e",
       weight: 1,
@@ -189,12 +192,46 @@ export function MapView({
     if (onMapReady) {
       onMapReady(map.current);
     }
+
+    if (preferBrowserLocation && navigator.geolocation) {
+      watchIdRef.current = navigator.geolocation.watchPosition(
+        (position) => {
+          if (!map.current || !window.L) return;
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          const accuracy = Math.max(20, Math.min(2000, position.coords.accuracy || 120));
+
+          if (locationMarkerRef.current) {
+            locationMarkerRef.current.setLatLng([lat, lng]);
+          }
+          if (accuracyCircleRef.current) {
+            accuracyCircleRef.current.setLatLng([lat, lng]);
+            accuracyCircleRef.current.setRadius(accuracy);
+          }
+        },
+        () => {
+          // Keep existing center if watch updates fail.
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 20000,
+          maximumAge: 0,
+        }
+      );
+    }
+
     setMapError(null);
   });
 
   useEffect(() => {
     init();
     return () => {
+      if (watchIdRef.current !== null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+      watchIdRef.current = null;
+      locationMarkerRef.current = null;
+      accuracyCircleRef.current = null;
       safeRemoveMap(map.current);
       clearLeafletContainer(mapContainer.current);
       map.current = null;
