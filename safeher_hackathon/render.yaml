@@ -2,7 +2,7 @@ services:
   - type: web
     name: safeher-hackathon
     env: node
-    plan: starter
+    plan: free
     buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
     startCommand: pnpm start
     envVars:
