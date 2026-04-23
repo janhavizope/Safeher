@@ -23,6 +23,10 @@ declare global {
 
 type LatLng = { lat: number; lng: number };
 
+const GPS_REJECT_ACCURACY_M = 800;
+const GPS_POOR_ACCURACY_M = 250;
+const GPS_MIN_MOVEMENT_M = 4;
+
 const LEAFLET_CSS_ID = "leaflet-css";
 const LEAFLET_JS_ID = "leaflet-js";
 const LEAFLET_CSS_HREF = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
@@ -120,6 +124,32 @@ function safeRemoveMap(instance: any) {
   }
 }
 
+function distanceMeters(a: LatLng, b: LatLng) {
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+
+  const haversine =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.sin(dLng / 2) * Math.sin(dLng / 2) * Math.cos(lat1) * Math.cos(lat2);
+
+  return 2 * 6371000 * Math.asin(Math.min(1, Math.sqrt(haversine)));
+}
+
+function smoothFix(previous: LatLng | null, next: LatLng, accuracy: number): LatLng {
+  if (!previous) {
+    return next;
+  }
+
+  const alpha = accuracy <= 30 ? 0.9 : accuracy <= 80 ? 0.7 : accuracy <= 150 ? 0.5 : 0.3;
+  return {
+    lat: previous.lat + (next.lat - previous.lat) * alpha,
+    lng: previous.lng + (next.lng - previous.lng) * alpha,
+  };
+}
+
 export function MapView({
   className,
   initialCenter = { lat: 19.076, lng: 72.8777 },
@@ -133,6 +163,7 @@ export function MapView({
   const locationMarkerRef = useRef<any | null>(null);
   const accuracyCircleRef = useRef<any | null>(null);
   const watchIdRef = useRef<number | null>(null);
+  const lastFixRef = useRef<LatLng | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
 
   const init = usePersistFn(async () => {
@@ -197,16 +228,34 @@ export function MapView({
       watchIdRef.current = navigator.geolocation.watchPosition(
         (position) => {
           if (!map.current || !window.L) return;
-          const lat = position.coords.latitude;
-          const lng = position.coords.longitude;
+          const rawFix = { lat: position.coords.latitude, lng: position.coords.longitude };
           const accuracy = Math.max(20, Math.min(2000, position.coords.accuracy || 120));
 
+          if (accuracy > GPS_REJECT_ACCURACY_M) {
+            return;
+          }
+
+          const previousFix = lastFixRef.current;
+          if (previousFix) {
+            const moved = distanceMeters(previousFix, rawFix);
+            if (moved < GPS_MIN_MOVEMENT_M && accuracy > GPS_POOR_ACCURACY_M) {
+              return;
+            }
+          }
+
+          const finalFix = smoothFix(previousFix, rawFix, accuracy);
+          lastFixRef.current = finalFix;
+
           if (locationMarkerRef.current) {
-            locationMarkerRef.current.setLatLng([lat, lng]);
+            locationMarkerRef.current.setLatLng([finalFix.lat, finalFix.lng]);
           }
           if (accuracyCircleRef.current) {
-            accuracyCircleRef.current.setLatLng([lat, lng]);
+            accuracyCircleRef.current.setLatLng([finalFix.lat, finalFix.lng]);
             accuracyCircleRef.current.setRadius(accuracy);
+          }
+
+          if (map.current && previousFix && distanceMeters(previousFix, finalFix) > 25) {
+            map.current.panTo([finalFix.lat, finalFix.lng], { animate: true });
           }
         },
         () => {
@@ -232,6 +281,7 @@ export function MapView({
       watchIdRef.current = null;
       locationMarkerRef.current = null;
       accuracyCircleRef.current = null;
+      lastFixRef.current = null;
       safeRemoveMap(map.current);
       clearLeafletContainer(mapContainer.current);
       map.current = null;

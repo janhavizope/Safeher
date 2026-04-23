@@ -21,6 +21,7 @@ type UploadedMedia = {
 
 const MAX_FILES = 3;
 const MIN_DESCRIPTION_CHARS = 10;
+const REPORT_ACCEPTABLE_ACCURACY_M = 150;
 
 const fileToBase64 = (file: File) =>
   new Promise<string>((resolve, reject) => {
@@ -60,6 +61,7 @@ export default function Report() {
   const [trackingPin, setTrackingPin] = useState<string | null>(null);
   const [uploadedMedia, setUploadedMedia] = useState<UploadedMedia[]>([]);
   const [uploadingCount, setUploadingCount] = useState(0);
+  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
   const mapRef = useRef<any | null>(null);
   const locationMarkerRef = useRef<any>(null);
 
@@ -118,6 +120,15 @@ export default function Report() {
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        const accuracy = Math.max(1, position.coords.accuracy || 9999);
+        setGpsAccuracy(accuracy);
+        if (accuracy > REPORT_ACCEPTABLE_ACCURACY_M) {
+          if (showToast) {
+            toast.error("GPS signal is weak. Move near a window/open area and try again.");
+          }
+          return;
+        }
+
         const lat = position.coords.latitude;
         const lng = position.coords.longitude;
         setIncidentLocation(lat, lng, "Current Location");
@@ -137,8 +148,8 @@ export default function Report() {
       },
       {
         enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 60_000,
+        timeout: 20000,
+        maximumAge: 0,
       }
     );
   };
@@ -500,6 +511,9 @@ export default function Report() {
               <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-3 flex items-center justify-between gap-3">
                 <p className="text-sm text-rose-900 font-medium">
                   {location ? `Selected: ${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}` : "Location not selected yet"}
+                </p>
+                <p className="text-xs text-rose-700 font-semibold">
+                  GPS: {gpsAccuracy ? `${Math.round(gpsAccuracy)}m` : "Calibrating"}
                 </p>
                 <Button type="button" variant="outline" className="border-rose-200 text-rose-950 hover:bg-rose-100" onClick={() => requestCurrentLocation(true)}>
                   Use My Current Location
