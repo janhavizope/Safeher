@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,7 @@ export default function TrackReport() {
   const [, setLocation] = useLocation();
   const [pin, setPin] = useState("");
   const [searchedPin, setSearchedPin] = useState("");
+  const previousStatusRef = useRef<string | null>(null);
 
   const trackQuery = trpc.incidents.trackStatus.useQuery(
     { pin: searchedPin },
@@ -27,8 +28,36 @@ export default function TrackReport() {
     e.preventDefault();
     if (pin.length >= 6) {
       setSearchedPin(pin.toUpperCase());
+      previousStatusRef.current = null;
     }
   };
+
+  useEffect(() => {
+    const currentStatus = trackQuery.data?.status;
+    if (!currentStatus) return;
+
+    const previousStatus = previousStatusRef.current;
+    const becameVerified = previousStatus === "pending" && currentStatus === "verified";
+
+    if (becameVerified) {
+      alert("Your report has been verified by moderators.");
+
+      if (typeof window !== "undefined" && "Notification" in window) {
+        const body = "Your report has been verified and is now visible in the community feed.";
+        if (Notification.permission === "granted") {
+          new Notification("SafeHer Update", { body });
+        } else if (Notification.permission !== "denied") {
+          Notification.requestPermission().then((permission) => {
+            if (permission === "granted") {
+              new Notification("SafeHer Update", { body });
+            }
+          });
+        }
+      }
+    }
+
+    previousStatusRef.current = currentStatus;
+  }, [trackQuery.data?.status]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
