@@ -205,37 +205,6 @@ function normalizeSuggestionLabel(item: Suggestion): string {
   return item.placeName || item.name || item.placeAddress || item.formatted_address || "Selected destination";
 }
 
-function normalizeSuggestions(payload: unknown): Suggestion[] {
-  const data = payload as {
-    suggestedLocations?: Suggestion[];
-    results?: Array<{
-      name?: string;
-      formatted_address?: string;
-      geometry?: { location?: LatLng };
-      latitude?: number | string;
-      longitude?: number | string;
-    }>;
-  };
-
-  if (Array.isArray(data.suggestedLocations) && data.suggestedLocations.length > 0) {
-    return data.suggestedLocations;
-  }
-
-  if (Array.isArray(data.results) && data.results.length > 0) {
-    return data.results.map((item) => ({
-      name: item.name,
-      formatted_address: item.formatted_address,
-      geometry: item.geometry,
-      latitude: item.latitude,
-      longitude: item.longitude,
-      placeName: item.name,
-      placeAddress: item.formatted_address,
-    }));
-  }
-
-  return [];
-}
-
 async function geocodeWithNominatim(query: string): Promise<LatLng | null> {
   const response = await fetch(`/api/maps/geocode?address=${encodeURIComponent(query)}`);
   if (!response.ok) {
@@ -649,21 +618,6 @@ export default function SafeRoute() {
     placeDestinationMarker(parsed);
   };
 
-  const fetchDestinationSuggestions = async (query: string, withLocation: boolean): Promise<Suggestion[]> => {
-    const params = new URLSearchParams({ query });
-    if (withLocation && currentLocation) {
-      params.set("lat", String(currentLocation.lat));
-      params.set("lng", String(currentLocation.lng));
-    }
-
-    const response = await fetch(`/api/mappls/autosuggest?${params.toString()}`);
-    if (!response.ok) {
-      return [];
-    }
-
-    return normalizeSuggestions(await response.json());
-  };
-
   const resolveDestinationFromQuery = async (): Promise<LatLng | null> => {
     const query = destinationQuery.trim();
     if (query.length < 3) {
@@ -678,26 +632,17 @@ export default function SafeRoute() {
     ];
 
     for (const variant of queryVariants) {
-      for (const withLocation of [false, true]) {
-        const data = await fetchDestinationSuggestions(variant, withLocation);
-        const first = data[0];
-        if (!first) {
-          continue;
-        }
-
-        const parsed = parseLatLng(first);
-        if (!parsed) {
-          continue;
-        }
-
-        setSelectedDestination(parsed);
-        const label = normalizeSuggestionLabel(first);
-        setSelectedDestinationLabel(label);
-        setDestinationQuery(label);
-        setSuggestions([]);
-        placeDestinationMarker(parsed);
-        return parsed;
+      const geocoded = await geocodeWithNominatim(variant);
+      if (!geocoded) {
+        continue;
       }
+
+      setSelectedDestination(geocoded);
+      setSelectedDestinationLabel(variant);
+      setDestinationQuery(variant);
+      setSuggestions([]);
+      placeDestinationMarker(geocoded);
+      return geocoded;
     }
 
     const geocoded = await geocodeWithNominatim(query);
@@ -859,46 +804,6 @@ export default function SafeRoute() {
   useEffect(() => {
     renderHeatmapOverlay();
   }, [incidentsQuery.data, nightMode]);
-
-  useEffect(() => {
-    if (!destinationQuery.trim() || destinationQuery.trim().length < 3) {
-      setSuggestions([]);
-      return;
-    }
-
-    if (searchDebounceRef.current !== null) {
-      window.clearTimeout(searchDebounceRef.current);
-    }
-
-    searchDebounceRef.current = window.setTimeout(async () => {
-      try {
-        const params = new URLSearchParams({
-          query: destinationQuery.trim(),
-        });
-
-        if (currentLocation) {
-          params.set("lat", String(currentLocation.lat));
-          params.set("lng", String(currentLocation.lng));
-        }
-
-        const response = await fetch(`/api/mappls/autosuggest?${params.toString()}`);
-        if (!response.ok) {
-          return;
-        }
-
-        const normalized = normalizeSuggestions(await response.json());
-        setSuggestions(normalized.slice(0, 6));
-      } catch (error) {
-        console.error(error);
-      }
-    }, 350);
-
-    return () => {
-      if (searchDebounceRef.current !== null) {
-        window.clearTimeout(searchDebounceRef.current);
-      }
-    };
-  }, [destinationQuery, currentLocation]);
 
   const handleSOS = async () => {
     if (!currentLocation) {
