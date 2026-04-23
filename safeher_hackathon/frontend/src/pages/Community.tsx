@@ -76,14 +76,14 @@ export default function Community() {
            <button 
              className="w-full text-left p-5 bg-gradient-to-br from-rose-50 to-white border border-rose-200 rounded-2xl mt-8 shadow-sm hover:border-rose-400 hover:shadow-md transition-all cursor-pointer group"
              onClick={() => {
-               toast.info("Connecting to nearby Guardian Network...");
+               toast.info("Connecting to nearby Safety Network...");
                setLocation("/map");
              }}
            >
               <div className="w-10 h-10 bg-rose-100 rounded-full flex items-center justify-center mb-3 group-hover:bg-rose-200 transition-colors">
                  <ShieldCheck className="w-5 h-5 text-rose-700" />
               </div>
-              <h3 className="text-sm font-bold text-gray-900 mb-1 group-hover:text-rose-900 transition-colors">Nearby Guardians</h3>
+                <h3 className="text-sm font-bold text-gray-900 mb-1 group-hover:text-rose-900 transition-colors">Nearby Support Circle</h3>
               <p className="text-xs text-gray-600 leading-relaxed">Total verified volunteers: 482 active in your city. Click to view on map.</p>
            </button>
         </div>

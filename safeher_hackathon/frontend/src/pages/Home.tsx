@@ -24,7 +24,7 @@ export default function Home() {
   const [tapCount, setTapCount] = useState(0);
 
   const toggleVolunteer = trpc.safety.toggleVolunteer.useMutation({
-    onSuccess: () => toast.success("Guardian status updated!")
+    onSuccess: () => toast.success("Support status updated!")
   });
 
   useEffect(() => {

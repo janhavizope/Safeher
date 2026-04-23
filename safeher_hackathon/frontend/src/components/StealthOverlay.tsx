@@ -52,7 +52,7 @@ export function StealthOverlay() {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
           severity: "high",
-          reporterAlias: "Stealth Guardian",
+          reporterAlias: "Stealth Sentinel",
           reportedAt: new Date()
         });
         toast.success("Article shared with your network", { duration: 2000 });

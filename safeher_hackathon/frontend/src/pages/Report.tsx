@@ -70,7 +70,7 @@ export default function Report() {
 
   const generateAlias = () => {
     const adjs = ["Golden", "Neon", "Shadow", "Silent", "Midnight", "Brave", "Swift", "Bright", "Emerald", "Solar"];
-    const nouns = ["Sentinel", "Guardian", "Scout", "Shield", "Watcher", "Protector", "Falcon", "Eagle", "Fox", "Oak"];
+    const nouns = ["Sentinel", "Ranger", "Scout", "Shield", "Watcher", "Protector", "Falcon", "Eagle", "Fox", "Oak"];
     const adj = adjs[Math.floor(Math.random() * adjs.length)];
     const noun = nouns[Math.floor(Math.random() * nouns.length)];
     const num = Math.floor(Math.random() * 99) + 1;
