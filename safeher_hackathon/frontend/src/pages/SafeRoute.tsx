@@ -629,59 +629,58 @@ export default function SafeRoute() {
     placeDestinationMarker(parsed);
   };
 
-  const resolveDestinationFromQuery = async (): Promise<LatLng | null> => {
-    const query = destinationQuery.trim();
-    if (query.length < 3) {
-      return null;
-    }
-
+  const fetchDestinationSuggestions = async (query: string, withLocation: boolean): Promise<Suggestion[]> => {
     const params = new URLSearchParams({ query });
-    if (currentLocation) {
+    if (withLocation && currentLocation) {
       params.set("lat", String(currentLocation.lat));
       params.set("lng", String(currentLocation.lng));
     }
 
     const response = await fetch(`/api/mappls/autosuggest?${params.toString()}`);
     if (!response.ok) {
-      // Fall through to geocoding if autosuggest fails.
-    } else {
-      const data = normalizeSuggestions(await response.json());
-      const first = data[0];
-      if (first) {
-        const parsed = parseLatLng(first);
-        if (parsed) {
-          setSelectedDestination(parsed);
-          const label = normalizeSuggestionLabel(first);
-          setSelectedDestinationLabel(label);
-          setDestinationQuery(label);
-          setSuggestions([]);
-          placeDestinationMarker(parsed);
-          return parsed;
+      return [];
+    }
+
+    return normalizeSuggestions(await response.json());
+  };
+
+  const resolveDestinationFromQuery = async (): Promise<LatLng | null> => {
+    const query = destinationQuery.trim();
+    if (query.length < 3) {
+      return null;
+    }
+
+    const queryVariants = [
+      query,
+      `${query}, Pune`,
+      `${query}, Maharashtra`,
+      `${query}, India`,
+    ];
+
+    for (const variant of queryVariants) {
+      for (const withLocation of [false, true]) {
+        const data = await fetchDestinationSuggestions(variant, withLocation);
+        const first = data[0];
+        if (!first) {
+          continue;
         }
+
+        const parsed = parseLatLng(first);
+        if (!parsed) {
+          continue;
+        }
+
+        setSelectedDestination(parsed);
+        const label = normalizeSuggestionLabel(first);
+        setSelectedDestinationLabel(label);
+        setDestinationQuery(label);
+        setSuggestions([]);
+        placeDestinationMarker(parsed);
+        return parsed;
       }
     }
 
-    const geocodeResponse = await fetch(`/api/maps/geocode?address=${encodeURIComponent(query)}`);
-    if (!geocodeResponse.ok) {
-      return null;
-    }
-
-    const geocode = (await geocodeResponse.json()) as {
-      location?: LatLng;
-      formattedAddress?: string;
-    };
-
-    if (!geocode.location || !Number.isFinite(geocode.location.lat) || !Number.isFinite(geocode.location.lng)) {
-      return null;
-    }
-
-    const parsed = geocode.location;
-    setSelectedDestination(parsed);
-    setSelectedDestinationLabel(geocode.formattedAddress || query);
-    setDestinationQuery(geocode.formattedAddress || query);
-    setSuggestions([]);
-    placeDestinationMarker(parsed);
-    return parsed;
+    return null;
   };
 
   const handleFindSafestRoute = async () => {
