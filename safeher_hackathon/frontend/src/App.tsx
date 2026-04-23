@@ -12,6 +12,7 @@ import Admin from "./pages/Admin";
 import TrackReport from "./pages/TrackReport";
 import SafeRoute from "./pages/SafeRoute";
 import { SafetySentinelProvider } from "./contexts/SafetySentinel";
+import { StealthProvider } from "./contexts/StealthContext";
 import Community from "./pages/Community";
 import SafeWalk from "./pages/SafeWalk";
 import PublicTrack from "./pages/PublicTrack";
@@ -45,6 +46,7 @@ function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="dark">
+        <StealthProvider>
           <SafetySentinelProvider>
             <TooltipProvider>
               <Toaster />
@@ -52,6 +54,7 @@ function App() {
               <EmergencyFab />
             </TooltipProvider>
           </SafetySentinelProvider>
+        </StealthProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );
