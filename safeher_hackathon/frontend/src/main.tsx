@@ -89,26 +89,12 @@ createRoot(document.getElementById("root")!).render(
 );
 
 // Register Service Worker for PWA
-/** 
- * Service Worker registration disabled to resolve development load issues.
- * Re-enable only for production build testing.
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').then(registration => {
-      console.log('SW registered: ', registration);
+      console.log('[PWA] Service Worker registered:', registration);
     }).catch(registrationError => {
-      console.log('SW registration failed: ', registrationError);
+      console.log('[PWA] Service Worker registration failed:', registrationError);
     });
-  });
-}
-/** 
- * Service Worker registration disabled to resolve development load issues.
- * Explicitly unregistering existing workers to clear the persistent blank page.
- */
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then((registrations) => {
-    for (const registration of registrations) {
-      registration.unregister();
-    }
   });
 }
