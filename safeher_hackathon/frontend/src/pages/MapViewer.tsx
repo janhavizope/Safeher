@@ -306,10 +306,6 @@ export default function MapViewer() {
                   <div className="w-3 h-3 rounded-full bg-blue-500 shadow-[0_0_8px_#3b82f6]"></div>
                   <span className="text-gray-700 text-sm">Low</span>
                 </div>
-                <div className="flex items-center gap-3 mt-5 pt-5 border-t border-rose-50">
-                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_10px_#34d399,0_0_20px_#34d399] animate-pulse"></div>
-                  <span className="text-emerald-400 font-bold text-xs uppercase tracking-widest flex items-center gap-2">Active Support</span>
-                </div>
               </CardContent>
             </Card>
 

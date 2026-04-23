@@ -317,7 +317,6 @@ export default function SafeRoute() {
   const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([]);
   const [rerouteMessage, setRerouteMessage] = useState<string>("");
   const [liveTrackToken, setLiveTrackToken] = useState<string | null>(null);
-  const [supportMode, setSupportMode] = useState(false);
 
   const mapRef = useRef<any | null>(null);
   const userMarkerRef = useRef<any | null>(null);
@@ -1058,13 +1057,6 @@ export default function SafeRoute() {
     }
   };
 
-  const handleSupportModeToggle = () => {
-    setSupportMode((prev) => {
-      const next = !prev;
-      toast.success(next ? "Active support enabled." : "Active support disabled.");
-      return next;
-    });
-  };
 
   useEffect(() => {
     if (!liveTrackToken) {
@@ -1276,25 +1268,6 @@ export default function SafeRoute() {
             </CardContent>
           </Card>
 
-          <Card className={nightMode ? "bg-slate-900 border-slate-800" : "bg-white border-rose-100"}>
-            <CardHeader>
-              <CardTitle className={`text-sm ${nightMode ? "text-slate-100" : "text-rose-950"}`}>Support Status</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className={`flex items-center gap-3 rounded-md p-3 ${nightMode ? "bg-slate-800" : "bg-emerald-50 border border-emerald-100"}`}>
-                <div className={`w-2.5 h-2.5 rounded-full ${supportMode ? "bg-emerald-400 shadow-[0_0_10px_#34d399,0_0_20px_#34d399]" : "bg-slate-400"}`} />
-                <span className={`font-bold text-xs uppercase tracking-widest ${supportMode ? "text-emerald-500" : nightMode ? "text-slate-300" : "text-slate-700"}`}>
-                  {supportMode ? "Active Support" : "Support Offline"}
-                </span>
-              </div>
-              <Button
-                onClick={handleSupportModeToggle}
-                className={`w-full ${supportMode ? "bg-rose-950 hover:bg-rose-900 text-white" : "bg-white border border-rose-200 text-rose-900 hover:bg-rose-50"}`}
-              >
-                {supportMode ? "Disable Active Support" : "Enable Active Support"}
-              </Button>
-            </CardContent>
-          </Card>
         </div>
 
         <div className={`relative rounded-xl overflow-hidden border ${nightMode ? "border-slate-800" : "border-rose-100"}`}>
