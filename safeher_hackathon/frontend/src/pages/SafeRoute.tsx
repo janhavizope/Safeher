@@ -975,6 +975,41 @@ export default function SafeRoute() {
     }
   };
 
+  const handleShareRoute = async () => {
+    if (!currentLocation || !selectedDestination) {
+      toast.error("Select destination and generate route before sharing.");
+      return;
+    }
+
+    const origin = `${currentLocation.lat},${currentLocation.lng}`;
+    const destination = `${selectedDestination.lat},${selectedDestination.lng}`;
+    const label = selectedDestinationLabel || "destination";
+
+    const googleMapsLink = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=walking`;
+    const osmLink = `https://www.openstreetmap.org/directions?engine=fossgis_osrm_foot&route=${encodeURIComponent(`${origin};${destination}`)}`;
+
+    const message = [
+      `Safe route to ${label}`,
+      `Google Maps directions: ${googleMapsLink}`,
+      `Web fallback directions: ${osmLink}`,
+    ].join("\n");
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "Safe Route",
+          text: message,
+          url: googleMapsLink,
+        });
+      } else {
+        await navigator.clipboard.writeText(message);
+        toast.success("Route links copied. Share them in chat.");
+      }
+    } catch {
+      toast.error("Could not share route right now.");
+    }
+  };
+
   return (
     <div className={`min-h-screen ${nightMode ? "bg-slate-950 text-slate-100" : "bg-stone-50 text-stone-900"}`}>
       <nav className={`border-b ${nightMode ? "border-slate-800 bg-slate-900/90" : "border-rose-100 bg-white/90"} backdrop-blur`}>
@@ -1084,6 +1119,15 @@ export default function SafeRoute() {
               >
                 <Route className="w-4 h-4 mr-2" />
                 {isRouting ? "Finding Safest Route..." : "Find Safest Route"}
+              </Button>
+
+              <Button
+                onClick={handleShareRoute}
+                disabled={!currentLocation || !selectedDestination}
+                className="w-full bg-cyan-700 hover:bg-cyan-600 text-white"
+              >
+                <Navigation className="w-4 h-4 mr-2" />
+                Share This Route
               </Button>
 
               <Button
