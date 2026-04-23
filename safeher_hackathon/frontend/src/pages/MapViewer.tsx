@@ -7,13 +7,20 @@ import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { MapView } from "@/components/Map";
 
+type LatLng = {
+  lat: number;
+  lng: number;
+};
+
 export default function MapViewer() {
   const [, setLocation] = useLocation();
   const mapRef = useRef<any | null>(null);
+  const volunteerMarkersRef = useRef<any[]>([]);
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [selectedType, setSelectedType] = useState<string>("all");
   const [daysBack, setDaysBack] = useState("30");
   const [heatmapLayer, setHeatmapLayer] = useState<any | null>(null);
+  const [mapCenter, setMapCenter] = useState<LatLng | null>(null);
   const markersRef = useRef<any[]>([]);
   const lookbackDays = parseInt(daysBack, 10);
   const dateRange = useMemo(
@@ -34,13 +41,34 @@ export default function MapViewer() {
     daysBack: lookbackDays,
   });
 
-  const volunteersQuery = trpc.safety.getNearbyVolunteers.useQuery({
-    lat: 19.0760, // Default to Mumbai or map center if available
-    lng: 72.8777
-  });
+  const volunteersQuery = trpc.safety.getNearbyVolunteers.useQuery(
+    {
+      lat: mapCenter?.lat ?? 19.076,
+      lng: mapCenter?.lng ?? 72.8777,
+    },
+    {
+      enabled: !!mapCenter,
+    }
+  );
 
   const handleMapReady = (map: any) => {
     mapRef.current = map;
+
+    if (typeof map?.getCenter === "function") {
+      const center = map.getCenter();
+      if (center && Number.isFinite(center.lat) && Number.isFinite(center.lng)) {
+        setMapCenter({ lat: center.lat, lng: center.lng });
+      }
+    }
+
+    if (typeof map?.on === "function") {
+      map.on("moveend", () => {
+        const center = map.getCenter?.();
+        if (center && Number.isFinite(center.lat) && Number.isFinite(center.lng)) {
+          setMapCenter({ lat: center.lat, lng: center.lng });
+        }
+      });
+    }
   };
 
   const getSeverityColor = (severity: string) => {
@@ -84,14 +112,19 @@ export default function MapViewer() {
     });
   }, [incidentsQuery.data]);
 
-  // Add Volunteer markers
+  // Add Volunteer markers only when explicit coordinates are available.
   useEffect(() => {
     if (!mapRef.current || !volunteersQuery.data || !window.L) return;
 
+    volunteerMarkersRef.current.forEach((marker) => mapRef.current?.removeLayer(marker));
+    volunteerMarkersRef.current = [];
+
     volunteersQuery.data.volunteers.forEach((v: any) => {
-      // Simulate random nearby positions based on center for the demo
-      const lat = 19.0760 + (Math.random() - 0.5) * 0.1;
-      const lng = 72.8777 + (Math.random() - 0.5) * 0.1;
+      const lat = Number(v.latitude);
+      const lng = Number(v.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return;
+      }
 
       const marker = window.L.circleMarker([lat, lng], {
         radius: 6,
@@ -107,8 +140,13 @@ export default function MapViewer() {
         </div>
       `);
 
-      markersRef.current.push(marker);
+      volunteerMarkersRef.current.push(marker);
     });
+
+    return () => {
+      volunteerMarkersRef.current.forEach((marker) => mapRef.current?.removeLayer(marker));
+      volunteerMarkersRef.current = [];
+    };
   }, [volunteersQuery.data]);
 
   const recentIncidents = useMemo(() => {

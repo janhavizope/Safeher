@@ -70,6 +70,7 @@ interface MapViewProps {
   className?: string;
   initialCenter?: LatLng;
   initialZoom?: number;
+  preferBrowserLocation?: boolean;
   onMapReady?: (map: any) => void;
   onMapError?: (error: string) => void;
 }
@@ -121,8 +122,9 @@ function safeRemoveMap(instance: any) {
 
 export function MapView({
   className,
-  initialCenter = { lat: 37.7749, lng: -122.4194 },
+  initialCenter = { lat: 19.076, lng: 72.8777 },
   initialZoom = 12,
+  preferBrowserLocation = true,
   onMapReady,
   onMapError,
 }: MapViewProps) {
@@ -131,7 +133,7 @@ export function MapView({
   const [mapError, setMapError] = useState<string | null>(null);
 
   const init = usePersistFn(async () => {
-    const userLocation = await getBrowserLocation();
+    const userLocation = preferBrowserLocation ? await getBrowserLocation() : null;
     const center = userLocation ?? initialCenter;
 
     if (!mapContainer.current) {
@@ -169,7 +171,7 @@ export function MapView({
     locationMarker.bindPopup(
       userLocation
         ? "Your live location"
-        : "Location access unavailable. Showing the best available center."
+        : "Selected map location"
     );
 
     window.L.circle([center.lat, center.lng], {

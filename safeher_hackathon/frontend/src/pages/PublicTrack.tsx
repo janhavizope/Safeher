@@ -133,6 +133,7 @@ export default function PublicTrack() {
           <MapView 
             onMapReady={handleMapReady} 
             initialZoom={16} 
+            preferBrowserLocation={false}
             initialCenter={{ 
               lat: parseFloat(walkQuery.data.currentLat.toString()), 
               lng: parseFloat(walkQuery.data.currentLng.toString()) 
