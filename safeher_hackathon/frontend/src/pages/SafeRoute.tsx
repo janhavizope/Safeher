@@ -255,6 +255,7 @@ export default function SafeRoute() {
   const destinationMarkerRef = useRef<any | null>(null);
   const routePolylineRef = useRef<any | null>(null);
   const nearbyMarkersRef = useRef<any[]>([]);
+  const heatmapLayerRef = useRef<any | null>(null);
   const routePathRef = useRef<LatLng[]>([]);
   const watchIdRef = useRef<number | null>(null);
   const searchDebounceRef = useRef<number | null>(null);
@@ -295,6 +296,66 @@ export default function SafeRoute() {
       }
     }
     nearbyMarkersRef.current = [];
+  };
+
+  const renderHeatmapOverlay = () => {
+    const leaflet = window.L;
+    if (!leaflet || !mapRef.current) {
+      return;
+    }
+
+    if (heatmapLayerRef.current) {
+      mapRef.current.removeLayer(heatmapLayerRef.current);
+      heatmapLayerRef.current = null;
+    }
+
+    const points = incidentsQuery.data?.heatmapPoints ?? [];
+    if (points.length === 0) {
+      return;
+    }
+
+    const layers = points.map((point: any) =>
+      leaflet.circle([point.latitude, point.longitude], {
+        radius: Math.min(500, 120 + point.weight * 45),
+        color: nightMode ? "#f97316" : "#dc2626",
+        weight: 0,
+        fillColor: nightMode ? "#fb7185" : "#f97316",
+        fillOpacity: Math.min(0.42, 0.08 + point.weight * 0.03),
+      })
+    );
+
+    heatmapLayerRef.current = leaflet.layerGroup(layers).addTo(mapRef.current);
+  };
+
+  const requestCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error("Geolocation is not supported in this browser.");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const updatedLocation = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        };
+
+        setCurrentLocation(updatedLocation);
+        renderUserMarker(updatedLocation);
+        if (mapRef.current) {
+          mapRef.current.setView([updatedLocation.lat, updatedLocation.lng], Math.max(mapRef.current.getZoom(), 14));
+        }
+        toast.success("Using your live GPS location as source.");
+      },
+      () => {
+        toast.error("Could not read your GPS location right now.");
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 5000,
+      }
+    );
   };
 
   const placeDestinationMarker = (destination: LatLng) => {
@@ -519,7 +580,19 @@ export default function SafeRoute() {
     setSuggestions([]);
 
     placeDestinationMarker(parsed);
-    await planSafeRoute(parsed);
+  };
+
+  const handleFindSafestRoute = async () => {
+    if (!currentLocation) {
+      toast.error("Please enable GPS source location first.");
+      return;
+    }
+    if (!selectedDestination) {
+      toast.error("Please choose a destination first.");
+      return;
+    }
+
+    await planSafeRoute(selectedDestination);
   };
 
   useEffect(() => {
@@ -589,6 +662,7 @@ export default function SafeRoute() {
         mapRef.current = map;
         setCurrentLocation(initialPosition);
         renderUserMarker(initialPosition);
+        renderHeatmapOverlay();
         setIsMapReady(true);
 
         watchIdRef.current = navigator.geolocation.watchPosition(
@@ -639,8 +713,15 @@ export default function SafeRoute() {
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
       }
+      if (heatmapLayerRef.current && mapRef.current) {
+        mapRef.current.removeLayer(heatmapLayerRef.current);
+      }
     };
   }, []);
+
+  useEffect(() => {
+    renderHeatmapOverlay();
+  }, [incidentsQuery.data, nightMode]);
 
   useEffect(() => {
     if (!destinationQuery.trim() || destinationQuery.trim().length < 3) {
@@ -737,6 +818,23 @@ export default function SafeRoute() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
+              <div className={`rounded-lg p-3 ${nightMode ? "bg-slate-800" : "bg-sky-50"}`}>
+                <p className="text-xs uppercase tracking-wide opacity-70">Source Location (GPS)</p>
+                <p className="text-sm mt-1">
+                  {currentLocation
+                    ? `${currentLocation.lat.toFixed(5)}, ${currentLocation.lng.toFixed(5)}`
+                    : "Source not locked yet"}
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={requestCurrentLocation}
+                  className="w-full mt-2"
+                >
+                  <Crosshair className="w-4 h-4 mr-2" />
+                  Use My Live GPS
+                </Button>
+              </div>
+
               <div>
                 <label className="text-sm opacity-80 mb-2 block">Destination</label>
                 <Input
@@ -779,6 +877,15 @@ export default function SafeRoute() {
                 </div>
                 <p className="text-xs mt-2 opacity-80">{rerouteMessage}</p>
               </div>
+
+              <Button
+                onClick={() => void handleFindSafestRoute()}
+                disabled={!currentLocation || !selectedDestination || isRouting}
+                className="w-full bg-rose-700 hover:bg-rose-600 text-white"
+              >
+                <Route className="w-4 h-4 mr-2" />
+                {isRouting ? "Finding Safest Route..." : "Find Safest Route"}
+              </Button>
 
               <Button
                 onClick={handleSOS}
@@ -848,7 +955,7 @@ export default function SafeRoute() {
           {!isMapReady && (
             <div className="absolute inset-0 bg-black/45 text-white flex flex-col items-center justify-center gap-2">
               <Crosshair className="w-6 h-6 animate-pulse" />
-              <p className="text-sm">Loading Mappls map and GPS...</p>
+              <p className="text-sm">Loading map and GPS...</p>
               {mapError && <p className="text-xs text-red-200 max-w-md text-center px-4">{mapError}</p>}
             </div>
           )}
