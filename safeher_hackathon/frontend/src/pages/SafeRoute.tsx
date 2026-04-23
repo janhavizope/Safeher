@@ -317,6 +317,7 @@ export default function SafeRoute() {
   const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([]);
   const [rerouteMessage, setRerouteMessage] = useState<string>("");
   const [liveTrackToken, setLiveTrackToken] = useState<string | null>(null);
+  const [guardianMode, setGuardianMode] = useState(false);
 
   const mapRef = useRef<any | null>(null);
   const userMarkerRef = useRef<any | null>(null);
@@ -1057,6 +1058,14 @@ export default function SafeRoute() {
     }
   };
 
+  const handleGuardianModeToggle = () => {
+    setGuardianMode((prev) => {
+      const next = !prev;
+      toast.success(next ? "Active Guardian enabled." : "Active Guardian disabled.");
+      return next;
+    });
+  };
+
   useEffect(() => {
     if (!liveTrackToken) {
       return;
@@ -1100,18 +1109,18 @@ export default function SafeRoute() {
         <div className="space-y-4">
           <Card className={nightMode ? "bg-slate-900 border-slate-800" : "bg-white border-rose-100"}>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle className={`flex items-center gap-2 ${nightMode ? "text-slate-100" : "text-rose-950"}`}>
                 <Route className="w-4 h-4" />
                 Plan Safe Route
               </CardTitle>
-              <CardDescription>
+              <CardDescription className={nightMode ? "text-slate-300" : "text-slate-700"}>
                 Destination search uses smart nearby suggestions (like ride apps) and routing prioritizes lower-risk paths.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className={`rounded-lg p-3 ${nightMode ? "bg-slate-800" : "bg-sky-50"}`}>
-                <p className="text-xs uppercase tracking-wide opacity-70">Source Location (GPS)</p>
-                <p className="text-sm mt-1">
+                <p className={`text-xs uppercase tracking-wide ${nightMode ? "text-slate-300" : "text-slate-800"}`}>Source Location (GPS)</p>
+                <p className={`text-sm mt-1 ${nightMode ? "text-slate-100" : "text-slate-900"}`}>
                   {currentLocation
                     ? `${currentLocation.lat.toFixed(5)}, ${currentLocation.lng.toFixed(5)}`
                     : "Source not locked yet"}
@@ -1127,8 +1136,9 @@ export default function SafeRoute() {
               </div>
 
               <div>
-                <label className="text-sm opacity-80 mb-2 block">Destination</label>
+                <label className={`text-sm mb-2 block ${nightMode ? "text-slate-200" : "text-slate-900"}`}>Destination</label>
                 <Input
+                  className={nightMode ? "bg-slate-900 border-slate-700 text-slate-100" : "bg-white border-rose-200 text-slate-900 placeholder:text-slate-500"}
                   value={destinationQuery}
                   onChange={(event) => {
                     const nextValue = event.target.value;
@@ -1153,8 +1163,8 @@ export default function SafeRoute() {
                         onClick={() => void handleDestinationSelect(item)}
                         className={`w-full text-left px-3 py-2 border-b last:border-b-0 ${nightMode ? "border-slate-800 hover:bg-slate-800" : "border-rose-100 hover:bg-rose-50"}`}
                       >
-                        <p className="text-sm font-medium">{normalizeSuggestionLabel(item)}</p>
-                        <p className="text-xs opacity-75">{item.placeAddress || item.formatted_address || ""}</p>
+                        <p className={`text-sm font-medium ${nightMode ? "text-slate-100" : "text-slate-900"}`}>{normalizeSuggestionLabel(item)}</p>
+                        <p className={`text-xs ${nightMode ? "text-slate-400" : "text-slate-700"}`}>{item.placeAddress || item.formatted_address || ""}</p>
                       </button>
                     ))}
                   </div>
@@ -1162,23 +1172,23 @@ export default function SafeRoute() {
               </div>
 
               <div className={`rounded-lg p-3 ${nightMode ? "bg-slate-800" : "bg-amber-50"}`}>
-                <p className="text-xs uppercase tracking-wide opacity-70">Route Summary</p>
-                <p className="text-sm mt-1">{selectedDestinationLabel || "Select a destination to begin"}</p>
+                <p className={`text-xs uppercase tracking-wide ${nightMode ? "text-slate-300" : "text-slate-800"}`}>Route Summary</p>
+                <p className={`text-sm mt-1 ${nightMode ? "text-slate-100" : "text-slate-900"}`}>{selectedDestinationLabel || "Select a destination to begin"}</p>
                 <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                  <span className={`inline-flex items-center rounded-full px-2 py-1 ${nightMode ? "bg-slate-700" : "bg-white border"}`}>
+                  <span className={`inline-flex items-center rounded-full px-2 py-1 ${nightMode ? "bg-slate-700 text-slate-100" : "bg-white border border-rose-200 text-slate-900"}`}>
                     <MapPin className="w-3 h-3 mr-1" />
                     {routeDistanceKm ? `${routeDistanceKm.toFixed(2)} km` : "Distance pending"}
                   </span>
-                  <span className={`inline-flex items-center rounded-full px-2 py-1 ${nightMode ? "bg-slate-700" : "bg-white border"}`}>
+                  <span className={`inline-flex items-center rounded-full px-2 py-1 ${nightMode ? "bg-slate-700 text-slate-100" : "bg-white border border-rose-200 text-slate-900"}`}>
                     <Clock className="w-3 h-3 mr-1" />
                     {routeEtaMin ? `${Math.round(routeEtaMin)} min ETA` : "ETA pending"}
                   </span>
-                  <span className={`inline-flex items-center rounded-full px-2 py-1 ${nightMode ? "bg-slate-700" : "bg-white border"}`}>
+                  <span className={`inline-flex items-center rounded-full px-2 py-1 ${nightMode ? "bg-slate-700 text-slate-100" : "bg-white border border-rose-200 text-slate-900"}`}>
                     <Navigation className="w-3 h-3 mr-1" />
                     {isRouting ? "Routing..." : "Live reroute active"}
                   </span>
                 </div>
-                <p className="text-xs mt-2 opacity-80">{rerouteMessage}</p>
+                <p className={`text-xs mt-2 ${nightMode ? "text-slate-300" : "text-slate-700"}`}>{rerouteMessage}</p>
               </div>
 
               <Button
@@ -1220,10 +1230,10 @@ export default function SafeRoute() {
 
           <Card className={nightMode ? "bg-slate-900 border-slate-800" : "bg-white border-rose-100"}>
             <CardHeader>
-              <CardTitle className="text-sm">Turn-by-Turn Guidance</CardTitle>
+              <CardTitle className={`text-sm ${nightMode ? "text-slate-100" : "text-rose-950"}`}>Turn-by-Turn Guidance</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 max-h-72 overflow-auto">
-              {turnByTurn.length === 0 && <p className="text-sm opacity-70">Instructions will appear after route planning.</p>}
+              {turnByTurn.length === 0 && <p className={`text-sm ${nightMode ? "text-slate-300" : "text-slate-700"}`}>Instructions will appear after route planning.</p>}
               {turnByTurn.map((step, index) => {
                 const text =
                   step.maneuver?.instruction ||
@@ -1237,8 +1247,8 @@ export default function SafeRoute() {
                     key={`step-${index}`}
                     className={`rounded-md p-2 ${nightMode ? "bg-slate-800" : "bg-stone-100"}`}
                   >
-                    <p className="text-sm">{index + 1}. {text}</p>
-                    {distanceLabel && <p className="text-xs opacity-70 mt-1">Distance: {distanceLabel}</p>}
+                    <p className={`text-sm ${nightMode ? "text-slate-100" : "text-slate-900"}`}>{index + 1}. {text}</p>
+                    {distanceLabel && <p className={`text-xs mt-1 ${nightMode ? "text-slate-300" : "text-slate-700"}`}>Distance: {distanceLabel}</p>}
                   </div>
                 );
               })}
@@ -1247,22 +1257,42 @@ export default function SafeRoute() {
 
           <Card className={nightMode ? "bg-slate-900 border-slate-800" : "bg-white border-rose-100"}>
             <CardHeader>
-              <CardTitle className="text-sm">Nearby Safety Landmarks</CardTitle>
+              <CardTitle className={`text-sm ${nightMode ? "text-slate-100" : "text-rose-950"}`}>Nearby Safety Landmarks</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 max-h-60 overflow-auto">
-              {nearbyPlaces.length === 0 && <p className="text-sm opacity-70">No landmarks loaded yet.</p>}
+              {nearbyPlaces.length === 0 && <p className={`text-sm ${nightMode ? "text-slate-300" : "text-slate-700"}`}>No landmarks loaded yet.</p>}
               {nearbyPlaces.map((place, index) => (
                 <div
                   key={`${place.placeName || "place"}-${index}`}
                   className={`rounded-md p-2 ${nightMode ? "bg-slate-800" : "bg-cyan-50"}`}
                 >
-                  <p className="text-sm font-medium">{place.placeName || "Safety Landmark"}</p>
-                  <p className="text-xs opacity-75">{place.placeAddress || ""}</p>
+                  <p className={`text-sm font-medium ${nightMode ? "text-slate-100" : "text-slate-900"}`}>{place.placeName || "Safety Landmark"}</p>
+                  <p className={`text-xs ${nightMode ? "text-slate-300" : "text-slate-700"}`}>{place.placeAddress || ""}</p>
                   {typeof place.distance === "number" && (
-                    <p className="text-xs opacity-75 mt-1">Approx. {Math.round(place.distance)} m away</p>
+                    <p className={`text-xs mt-1 ${nightMode ? "text-slate-300" : "text-slate-700"}`}>Approx. {Math.round(place.distance)} m away</p>
                   )}
                 </div>
               ))}
+            </CardContent>
+          </Card>
+
+          <Card className={nightMode ? "bg-slate-900 border-slate-800" : "bg-white border-rose-100"}>
+            <CardHeader>
+              <CardTitle className={`text-sm ${nightMode ? "text-slate-100" : "text-rose-950"}`}>Guardian Status</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className={`flex items-center gap-3 rounded-md p-3 ${nightMode ? "bg-slate-800" : "bg-emerald-50 border border-emerald-100"}`}>
+                <div className={`w-2.5 h-2.5 rounded-full ${guardianMode ? "bg-emerald-400 shadow-[0_0_10px_#34d399,0_0_20px_#34d399]" : "bg-slate-400"}`} />
+                <span className={`font-bold text-xs uppercase tracking-widest ${guardianMode ? "text-emerald-500" : nightMode ? "text-slate-300" : "text-slate-700"}`}>
+                  {guardianMode ? "Active Guardian" : "Guardian Offline"}
+                </span>
+              </div>
+              <Button
+                onClick={handleGuardianModeToggle}
+                className={`w-full ${guardianMode ? "bg-rose-950 hover:bg-rose-900 text-white" : "bg-white border border-rose-200 text-rose-900 hover:bg-rose-50"}`}
+              >
+                {guardianMode ? "Disable Active Guardian" : "Enable Active Guardian"}
+              </Button>
             </CardContent>
           </Card>
         </div>
