@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { Navigation, ShieldAlert, Moon, Sun, MapPin, Route, Clock, Crosshair } from "lucide-react";
+import { Navigation, ShieldAlert, Moon, Sun, MapPin, Route, Clock, Crosshair, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -75,6 +75,7 @@ declare global {
 
 const REROUTE_DISTANCE_METERS = 120;
 const REROUTE_COOLDOWN_MS = 8000;
+const LIVE_TRACK_PUSH_INTERVAL_MS = 5000;
 
 function decodePolyline(encoded: string, precision = 5): LatLng[] {
   let index = 0;
@@ -315,6 +316,7 @@ export default function SafeRoute() {
   const [turnByTurn, setTurnByTurn] = useState<DirectionStep[]>([]);
   const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([]);
   const [rerouteMessage, setRerouteMessage] = useState<string>("");
+  const [liveTrackToken, setLiveTrackToken] = useState<string | null>(null);
 
   const mapRef = useRef<any | null>(null);
   const userMarkerRef = useRef<any | null>(null);
@@ -334,6 +336,8 @@ export default function SafeRoute() {
       refetchOnWindowFocus: false,
     },
   );
+  const startWalkMutation = trpc.safety.startSafeWalk.useMutation();
+  const updateWalkMutation = trpc.safety.updateWalk.useMutation();
 
   const renderUserMarker = (position: LatLng) => {
     const leaflet = window.L;
@@ -1010,6 +1014,71 @@ export default function SafeRoute() {
     }
   };
 
+  const handleShareLiveTracking = async () => {
+    if (!currentLocation) {
+      toast.error("Live location unavailable right now.");
+      return;
+    }
+
+    try {
+      let token = liveTrackToken;
+
+      if (!token) {
+        const session = await startWalkMutation.mutateAsync({
+          startLat: currentLocation.lat,
+          startLng: currentLocation.lng,
+          destLat: selectedDestination?.lat,
+          destLng: selectedDestination?.lng,
+        });
+
+        if (!session?.secretToken) {
+          throw new Error("Missing live track token");
+        }
+
+        token = session.secretToken;
+        setLiveTrackToken(token);
+      }
+
+      const liveUrl = `${window.location.origin}/track/${token}`;
+      const message = `Track my live moving location on SafeHer: ${liveUrl}`;
+
+      if (navigator.share) {
+        await navigator.share({
+          title: "SafeHer Live Tracking",
+          text: message,
+          url: liveUrl,
+        });
+      } else {
+        await navigator.clipboard.writeText(message);
+        toast.success("Live tracking link copied. Send it to your trusted contacts.");
+      }
+    } catch {
+      toast.error("Could not create live tracking link right now.");
+    }
+  };
+
+  useEffect(() => {
+    if (!liveTrackToken) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      if (!currentLocation) {
+        return;
+      }
+
+      updateWalkMutation.mutate({
+        token: liveTrackToken,
+        lat: currentLocation.lat,
+        lng: currentLocation.lng,
+      });
+    }, LIVE_TRACK_PUSH_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [liveTrackToken, currentLocation, updateWalkMutation]);
+
   return (
     <div className={`min-h-screen ${nightMode ? "bg-slate-950 text-slate-100" : "bg-stone-50 text-stone-900"}`}>
       <nav className={`border-b ${nightMode ? "border-slate-800 bg-slate-900/90" : "border-rose-100 bg-white/90"} backdrop-blur`}>
@@ -1127,7 +1196,16 @@ export default function SafeRoute() {
                 className="w-full bg-cyan-700 hover:bg-cyan-600 text-white"
               >
                 <Navigation className="w-4 h-4 mr-2" />
-                Share This Route
+                Share Static Route
+              </Button>
+
+              <Button
+                onClick={() => void handleShareLiveTracking()}
+                disabled={!currentLocation || startWalkMutation.isPending}
+                className="w-full bg-emerald-700 hover:bg-emerald-600 text-white"
+              >
+                <Share2 className="w-4 h-4 mr-2" />
+                {liveTrackToken ? "Share Live Tracking Link" : "Start + Share Live Tracking"}
               </Button>
 
               <Button
