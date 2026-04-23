@@ -582,17 +582,59 @@ export default function SafeRoute() {
     placeDestinationMarker(parsed);
   };
 
+  const resolveDestinationFromQuery = async (): Promise<LatLng | null> => {
+    const query = destinationQuery.trim();
+    if (query.length < 3) {
+      return null;
+    }
+
+    const params = new URLSearchParams({ query });
+    if (currentLocation) {
+      params.set("lat", String(currentLocation.lat));
+      params.set("lng", String(currentLocation.lng));
+    }
+
+    const response = await fetch(`/api/mappls/autosuggest?${params.toString()}`);
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = (await response.json()) as { suggestedLocations?: Suggestion[] };
+    const first = data.suggestedLocations?.[0];
+    if (!first) {
+      return null;
+    }
+
+    const parsed = parseLatLng(first);
+    if (!parsed) {
+      return null;
+    }
+
+    setSelectedDestination(parsed);
+    setSelectedDestinationLabel(first.placeName || first.placeAddress || query);
+    setDestinationQuery(first.placeName || first.placeAddress || query);
+    setSuggestions([]);
+    placeDestinationMarker(parsed);
+    return parsed;
+  };
+
   const handleFindSafestRoute = async () => {
     if (!currentLocation) {
       toast.error("Please enable GPS source location first.");
       return;
     }
-    if (!selectedDestination) {
-      toast.error("Please choose a destination first.");
+
+    let destination = selectedDestination;
+    if (!destination) {
+      destination = await resolveDestinationFromQuery();
+    }
+
+    if (!destination) {
+      toast.error("Enter a valid destination or choose one from suggestions.");
       return;
     }
 
-    await planSafeRoute(selectedDestination);
+    await planSafeRoute(destination);
   };
 
   useEffect(() => {
@@ -840,6 +882,12 @@ export default function SafeRoute() {
                 <Input
                   value={destinationQuery}
                   onChange={(event) => setDestinationQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void handleFindSafestRoute();
+                    }
+                  }}
                   placeholder="Search address / place"
                 />
                 {suggestions.length > 0 && (
@@ -880,7 +928,7 @@ export default function SafeRoute() {
 
               <Button
                 onClick={() => void handleFindSafestRoute()}
-                disabled={!currentLocation || !selectedDestination || isRouting}
+                disabled={!currentLocation || destinationQuery.trim().length < 3 || isRouting}
                 className="w-full bg-rose-700 hover:bg-rose-600 text-white"
               >
                 <Route className="w-4 h-4 mr-2" />
