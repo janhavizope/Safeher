@@ -125,11 +125,19 @@ async function startServer() {
   app.use("/api/uploads", express.static(localUploadDir));
 
   app.get("/api/maps/config", (_req, res) => {
+    const mapKey = getMapplsMapKey();
+    const restKey = getMapplsRestKey();
+    console.log("[API] /api/maps/config - Returning map keys", {
+      mapKeyIsEmpty: !mapKey,
+      mapKeyLength: mapKey?.length,
+      restKeyIsEmpty: !restKey,
+      restKeyLength: restKey?.length,
+    });
     res.json({
       mapsApiKey:
         process.env.VITE_FRONTEND_FORGE_API_KEY || process.env.GOOGLE_MAPS_API_KEY || ENV.forgeApiKey || "",
-      mapplsMapApiKey: getMapplsMapKey(),
-      mapplsRestApiKey: getMapplsRestKey(),
+      mapplsMapApiKey: mapKey,
+      mapplsRestApiKey: restKey,
     });
   });
 

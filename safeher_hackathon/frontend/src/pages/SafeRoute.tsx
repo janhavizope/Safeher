@@ -522,6 +522,11 @@ export default function SafeRoute() {
         };
 
         const mapKey = config.mapplsMapApiKey || config.mapplsRestApiKey || config.mapsApiKey || "";
+        console.log("[SafeRoute] Map config loaded", {
+          mapplsMapApiKey: config.mapplsMapApiKey ? "SET" : "EMPTY",
+          mapplsRestApiKey: config.mapplsRestApiKey ? "SET" : "EMPTY",
+          selectedMapKey: mapKey ? "VALID" : "EMPTY",
+        });
         if (!mapKey) {
           throw new Error("Mappls key missing. Set MAPPLS_REST_API_KEY (or MAPPLS_MAP_SDK_KEY).");
         }

@@ -160,11 +160,13 @@ export function MapView({
   const getMapplsKey = async (): Promise<string> => {
     const envKey = import.meta.env.VITE_FRONTEND_FORGE_API_KEY;
     if (envKey) {
+      console.log("[Map] Using VITE_FRONTEND_FORGE_API_KEY");
       return envKey;
     }
 
     const response = await fetch("/api/maps/config");
     if (!response.ok) {
+      console.error("[Map] /api/maps/config failed:", response.status);
       return "";
     }
     const data = (await response.json()) as {
@@ -172,7 +174,15 @@ export function MapView({
       mapplsRestApiKey?: string;
       mapsApiKey?: string;
     };
-    return data.mapplsMapApiKey || data.mapplsRestApiKey || data.mapsApiKey || "";
+    console.log("[Map] Got config from /api/maps/config", {
+      mapplsMapApiKey: data.mapplsMapApiKey ? "SET" : "EMPTY",
+      mapplsRestApiKey: data.mapplsRestApiKey ? "SET" : "EMPTY",
+    });
+    const selectedKey = data.mapplsMapApiKey || data.mapplsRestApiKey || data.mapsApiKey || "";
+    if (!selectedKey) {
+      console.error("[Map] No map key available!");
+    }
+    return selectedKey;
   };
 
   const init = usePersistFn(async () => {
