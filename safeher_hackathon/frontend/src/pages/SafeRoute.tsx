@@ -1105,9 +1105,6 @@ export default function SafeRoute() {
                 <Route className="w-4 h-4" />
                 Plan Safe Route
               </CardTitle>
-              <CardDescription className={nightMode ? "text-slate-300" : "text-slate-700"}>
-                Destination search uses smart nearby suggestions (like ride apps) and routing prioritizes lower-risk paths.
-              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className={`rounded-lg p-3 ${nightMode ? "bg-slate-800" : "bg-sky-50"}`}>
