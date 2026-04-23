@@ -236,6 +236,26 @@ function normalizeSuggestions(payload: unknown): Suggestion[] {
   return [];
 }
 
+async function geocodeWithNominatim(query: string): Promise<LatLng | null> {
+  const response = await fetch(`/api/maps/geocode?address=${encodeURIComponent(query)}`);
+  if (!response.ok) {
+    return null;
+  }
+
+  const result = (await response.json()) as { location?: LatLng };
+  if (!result.location) {
+    return null;
+  }
+
+  const lat = Number(result.location.lat);
+  const lng = Number(result.location.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return null;
+  }
+
+  return { lat, lng };
+}
+
 const LEAFLET_CSS_ID = "safe-route-leaflet-css";
 const LEAFLET_JS_ID = "safe-route-leaflet-js";
 const LEAFLET_CSS_HREF = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
@@ -678,6 +698,16 @@ export default function SafeRoute() {
         placeDestinationMarker(parsed);
         return parsed;
       }
+    }
+
+    const geocoded = await geocodeWithNominatim(query);
+    if (geocoded) {
+      setSelectedDestination(geocoded);
+      setSelectedDestinationLabel(query);
+      setDestinationQuery(query);
+      setSuggestions([]);
+      placeDestinationMarker(geocoded);
+      return geocoded;
     }
 
     return null;

@@ -5,7 +5,6 @@ import net from "net";
 import path from "node:path";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
-import { makeRequest, type GeocodingResult } from "./map";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { incidentEvents } from "./incidentEvents";
@@ -150,19 +149,38 @@ async function startServer() {
         return;
       }
 
-      const result = await makeRequest<GeocodingResult>("/maps/api/geocode/json", { address });
-      const first = result.results?.[0];
+      const url = new URL("https://nominatim.openstreetmap.org/search");
+      url.searchParams.set("q", address);
+      url.searchParams.set("format", "jsonv2");
+      url.searchParams.set("limit", "1");
+      url.searchParams.set("addressdetails", "1");
+      url.searchParams.set("countrycodes", "in");
 
-      if (!first?.geometry?.location) {
+      const upstream = await fetch(url.toString(), {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "SafeHer/1.0 (+https://safeher-vp61.onrender.com)",
+        },
+      });
+
+      if (!upstream.ok) {
+        res.status(upstream.status).json({ message: "Geocoding lookup failed" });
+        return;
+      }
+
+      const results = (await upstream.json()) as Array<{ lat?: string; lon?: string; display_name?: string }>;
+      const first = results[0];
+
+      if (!first?.lat || !first?.lon) {
         res.status(404).json({ message: "No geocoding result found" });
         return;
       }
 
       res.json({
-        location: first.geometry.location,
-        formattedAddress: first.formatted_address,
-        placeId: first.place_id,
-        status: result.status,
+        location: { lat: Number(first.lat), lng: Number(first.lon) },
+        formattedAddress: first.display_name || address,
+        placeId: first.display_name || address,
+        status: "OK",
       });
     } catch (error) {
       console.error("Map geocode failed", error);
