@@ -5,6 +5,7 @@ import net from "net";
 import path from "node:path";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
+import { makeRequest, type GeocodingResult } from "./map";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { incidentEvents } from "./incidentEvents";
@@ -139,6 +140,34 @@ async function startServer() {
       mapplsMapApiKey: mapKey,
       mapplsRestApiKey: restKey,
     });
+  });
+
+  app.get("/api/maps/geocode", async (req, res) => {
+    try {
+      const address = String(req.query.address || "").trim();
+      if (!address) {
+        res.status(400).json({ message: "address is required" });
+        return;
+      }
+
+      const result = await makeRequest<GeocodingResult>("/maps/api/geocode/json", { address });
+      const first = result.results?.[0];
+
+      if (!first?.geometry?.location) {
+        res.status(404).json({ message: "No geocoding result found" });
+        return;
+      }
+
+      res.json({
+        location: first.geometry.location,
+        formattedAddress: first.formatted_address,
+        placeId: first.place_id,
+        status: result.status,
+      });
+    } catch (error) {
+      console.error("Map geocode failed", error);
+      res.status(500).json({ message: "Map geocode failed" });
+    }
   });
 
   app.get("/api/mappls/autosuggest", async (req, res) => {

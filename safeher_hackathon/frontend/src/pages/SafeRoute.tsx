@@ -596,23 +596,41 @@ export default function SafeRoute() {
 
     const response = await fetch(`/api/mappls/autosuggest?${params.toString()}`);
     if (!response.ok) {
+      // Fall through to geocoding if autosuggest fails.
+    } else {
+      const data = (await response.json()) as { suggestedLocations?: Suggestion[] };
+      const first = data.suggestedLocations?.[0];
+      if (first) {
+        const parsed = parseLatLng(first);
+        if (parsed) {
+          setSelectedDestination(parsed);
+          setSelectedDestinationLabel(first.placeName || first.placeAddress || query);
+          setDestinationQuery(first.placeName || first.placeAddress || query);
+          setSuggestions([]);
+          placeDestinationMarker(parsed);
+          return parsed;
+        }
+      }
+    }
+
+    const geocodeResponse = await fetch(`/api/maps/geocode?address=${encodeURIComponent(query)}`);
+    if (!geocodeResponse.ok) {
       return null;
     }
 
-    const data = (await response.json()) as { suggestedLocations?: Suggestion[] };
-    const first = data.suggestedLocations?.[0];
-    if (!first) {
+    const geocode = (await geocodeResponse.json()) as {
+      location?: LatLng;
+      formattedAddress?: string;
+    };
+
+    if (!geocode.location || !Number.isFinite(geocode.location.lat) || !Number.isFinite(geocode.location.lng)) {
       return null;
     }
 
-    const parsed = parseLatLng(first);
-    if (!parsed) {
-      return null;
-    }
-
+    const parsed = geocode.location;
     setSelectedDestination(parsed);
-    setSelectedDestinationLabel(first.placeName || first.placeAddress || query);
-    setDestinationQuery(first.placeName || first.placeAddress || query);
+    setSelectedDestinationLabel(geocode.formattedAddress || query);
+    setDestinationQuery(geocode.formattedAddress || query);
     setSuggestions([]);
     placeDestinationMarker(parsed);
     return parsed;
