@@ -143,11 +143,6 @@ export default function Admin() {
     refetchInterval: 30000 
   });
 
-  // Auth check disabled
-  if (user?.role !== "admin") {
-    return null;
-  }
-
   const stats = statisticsQuery.data;
   const incidents = incidentsQuery.data;
 
