@@ -192,14 +192,40 @@ function parseLatLng(candidate: Suggestion): LatLng | null {
 
 async function loadMapplsScript(mapKey: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    if (window.MapmyIndia && window.L) {
+    if (window.MapmyIndia) {
       resolve();
       return;
     }
 
-    const existing = document.getElementById("mappls-sdk");
+    const existing = document.getElementById("mappls-sdk") as HTMLScriptElement | null;
     if (existing) {
-      existing.addEventListener("load", () => resolve(), { once: true });
+      if (window.MapmyIndia) {
+        resolve();
+        return;
+      }
+
+      // Script may already be loaded before this listener is attached.
+      if ((existing as HTMLScriptElement).dataset.loaded === "true") {
+        const startedAt = Date.now();
+        const timer = window.setInterval(() => {
+          if (window.MapmyIndia) {
+            window.clearInterval(timer);
+            resolve();
+            return;
+          }
+
+          if (Date.now() - startedAt > 4000) {
+            window.clearInterval(timer);
+            reject(new Error("Mappls SDK failed to initialize."));
+          }
+        }, 100);
+        return;
+      }
+
+      existing.addEventListener("load", () => {
+        (existing as HTMLScriptElement).dataset.loaded = "true";
+        resolve();
+      }, { once: true });
       existing.addEventListener("error", () => reject(new Error("Mappls SDK failed to load")), { once: true });
       return;
     }
@@ -209,7 +235,10 @@ async function loadMapplsScript(mapKey: string): Promise<void> {
     script.src = `https://apis.mapmyindia.com/advancedmaps/v1/${encodeURIComponent(mapKey)}/map_load?v=1.5`;
     script.async = true;
     script.defer = true;
-    script.onload = () => resolve();
+    script.onload = () => {
+      script.dataset.loaded = "true";
+      resolve();
+    };
     script.onerror = () => reject(new Error("Mappls SDK failed to load"));
     document.head.appendChild(script);
   });
@@ -531,18 +560,30 @@ export default function SafeRoute() {
           throw new Error("Mappls key missing. Set MAPPLS_REST_API_KEY (or MAPPLS_MAP_SDK_KEY).");
         }
 
-        const geolocationPosition = await new Promise<GeolocationPosition>((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 15000,
-            maximumAge: 30000,
-          });
-        });
+        const initialPosition = await new Promise<LatLng>((resolve) => {
+          if (!navigator.geolocation) {
+            resolve({ lat: 19.076, lng: 72.8777 });
+            return;
+          }
 
-        const initialPosition = {
-          lat: geolocationPosition.coords.latitude,
-          lng: geolocationPosition.coords.longitude,
-        };
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              resolve({
+                lat: position.coords.latitude,
+                lng: position.coords.longitude,
+              });
+            },
+            () => {
+              // Do not block map init if GPS permission is denied/unavailable.
+              resolve({ lat: 19.076, lng: 72.8777 });
+            },
+            {
+              enableHighAccuracy: true,
+              timeout: 8000,
+              maximumAge: 15000,
+            }
+          );
+        });
 
         await loadMapplsScript(mapKey);
         if (!mounted) {
