@@ -26,6 +26,9 @@ type Suggestion = {
   eLoc?: string;
   latitude?: number | string;
   longitude?: number | string;
+  name?: string;
+  formatted_address?: string;
+  geometry?: { location?: LatLng };
 };
 
 type DirectionStep = {
@@ -187,7 +190,50 @@ function parseLatLng(candidate: Suggestion): LatLng | null {
     return { lat, lng };
   }
 
+  const geometryLocation = candidate.geometry?.location;
+  if (geometryLocation && Number.isFinite(geometryLocation.lat) && Number.isFinite(geometryLocation.lng)) {
+    return {
+      lat: Number(geometryLocation.lat),
+      lng: Number(geometryLocation.lng),
+    };
+  }
+
   return null;
+}
+
+function normalizeSuggestionLabel(item: Suggestion): string {
+  return item.placeName || item.name || item.placeAddress || item.formatted_address || "Selected destination";
+}
+
+function normalizeSuggestions(payload: unknown): Suggestion[] {
+  const data = payload as {
+    suggestedLocations?: Suggestion[];
+    results?: Array<{
+      name?: string;
+      formatted_address?: string;
+      geometry?: { location?: LatLng };
+      latitude?: number | string;
+      longitude?: number | string;
+    }>;
+  };
+
+  if (Array.isArray(data.suggestedLocations) && data.suggestedLocations.length > 0) {
+    return data.suggestedLocations;
+  }
+
+  if (Array.isArray(data.results) && data.results.length > 0) {
+    return data.results.map((item) => ({
+      name: item.name,
+      formatted_address: item.formatted_address,
+      geometry: item.geometry,
+      latitude: item.latitude,
+      longitude: item.longitude,
+      placeName: item.name,
+      placeAddress: item.formatted_address,
+    }));
+  }
+
+  return [];
 }
 
 const LEAFLET_CSS_ID = "safe-route-leaflet-css";
@@ -575,8 +621,9 @@ export default function SafeRoute() {
     }
 
     setSelectedDestination(parsed);
-    setSelectedDestinationLabel(item.placeName || item.placeAddress || "Selected destination");
-    setDestinationQuery(item.placeName || item.placeAddress || "");
+    const label = normalizeSuggestionLabel(item);
+    setSelectedDestinationLabel(label);
+    setDestinationQuery(label);
     setSuggestions([]);
 
     placeDestinationMarker(parsed);
@@ -598,14 +645,15 @@ export default function SafeRoute() {
     if (!response.ok) {
       // Fall through to geocoding if autosuggest fails.
     } else {
-      const data = (await response.json()) as { suggestedLocations?: Suggestion[] };
-      const first = data.suggestedLocations?.[0];
+      const data = normalizeSuggestions(await response.json());
+      const first = data[0];
       if (first) {
         const parsed = parseLatLng(first);
         if (parsed) {
           setSelectedDestination(parsed);
-          setSelectedDestinationLabel(first.placeName || first.placeAddress || query);
-          setDestinationQuery(first.placeName || first.placeAddress || query);
+          const label = normalizeSuggestionLabel(first);
+          setSelectedDestinationLabel(label);
+          setDestinationQuery(label);
           setSuggestions([]);
           placeDestinationMarker(parsed);
           return parsed;
@@ -809,8 +857,8 @@ export default function SafeRoute() {
           return;
         }
 
-        const data = (await response.json()) as { suggestedLocations?: Suggestion[] };
-        setSuggestions((data.suggestedLocations || []).slice(0, 6));
+        const normalized = normalizeSuggestions(await response.json());
+        setSuggestions(normalized.slice(0, 6));
       } catch (error) {
         console.error(error);
       }
@@ -916,8 +964,8 @@ export default function SafeRoute() {
                         onClick={() => void handleDestinationSelect(item)}
                         className={`w-full text-left px-3 py-2 border-b last:border-b-0 ${nightMode ? "border-slate-800 hover:bg-slate-800" : "border-rose-100 hover:bg-rose-50"}`}
                       >
-                        <p className="text-sm font-medium">{item.placeName || "Unknown place"}</p>
-                        <p className="text-xs opacity-75">{item.placeAddress || ""}</p>
+                        <p className="text-sm font-medium">{normalizeSuggestionLabel(item)}</p>
+                        <p className="text-xs opacity-75">{item.placeAddress || item.formatted_address || ""}</p>
                       </button>
                     ))}
                   </div>
