@@ -206,18 +206,30 @@ function normalizeSuggestionLabel(item: Suggestion): string {
 }
 
 async function geocodeWithNominatim(query: string): Promise<LatLng | null> {
-  const response = await fetch(`/api/maps/geocode?address=${encodeURIComponent(query)}`);
+  const url = new URL("https://nominatim.openstreetmap.org/search");
+  url.searchParams.set("q", query);
+  url.searchParams.set("format", "jsonv2");
+  url.searchParams.set("limit", "1");
+  url.searchParams.set("addressdetails", "1");
+  url.searchParams.set("countrycodes", "in");
+
+  const response = await fetch(url.toString(), {
+    headers: {
+      Accept: "application/json",
+    },
+  });
   if (!response.ok) {
     return null;
   }
 
-  const result = (await response.json()) as { location?: LatLng };
-  if (!result.location) {
+  const results = (await response.json()) as Array<{ lat?: string; lon?: string; display_name?: string }>;
+  const first = results[0];
+  if (!first?.lat || !first?.lon) {
     return null;
   }
 
-  const lat = Number(result.location.lat);
-  const lng = Number(result.location.lng);
+  const lat = Number(first.lat);
+  const lng = Number(first.lon);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
     return null;
   }
