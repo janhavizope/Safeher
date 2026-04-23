@@ -188,6 +188,81 @@ async function startServer() {
     }
   });
 
+  app.get("/api/maps/search", async (req, res) => {
+    try {
+      const query = String(req.query.query || "").trim();
+      if (query.length < 2) {
+        res.status(400).json({ message: "query is required" });
+        return;
+      }
+
+      const lat = Number(req.query.lat);
+      const lng = Number(req.query.lng);
+      const hasBiasLocation = Number.isFinite(lat) && Number.isFinite(lng);
+
+      const url = new URL("https://nominatim.openstreetmap.org/search");
+      url.searchParams.set("q", query);
+      url.searchParams.set("format", "jsonv2");
+      url.searchParams.set("limit", "8");
+      url.searchParams.set("addressdetails", "1");
+      url.searchParams.set("countrycodes", "in");
+
+      if (hasBiasLocation) {
+        const delta = 0.18;
+        const left = Math.max(-180, lng - delta);
+        const right = Math.min(180, lng + delta);
+        const top = Math.min(90, lat + delta);
+        const bottom = Math.max(-90, lat - delta);
+        url.searchParams.set("viewbox", `${left},${top},${right},${bottom}`);
+      }
+
+      const upstream = await fetch(url.toString(), {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "SafeHer/1.0 (+https://safeher-vp61.onrender.com)",
+        },
+      });
+
+      if (!upstream.ok) {
+        res.status(upstream.status).json({ message: "Place search failed" });
+        return;
+      }
+
+      const results = (await upstream.json()) as Array<{
+        lat?: string;
+        lon?: string;
+        display_name?: string;
+        name?: string;
+      }>;
+
+      const suggestions = (results || [])
+        .map((item) => {
+          const parsedLat = Number(item.lat);
+          const parsedLng = Number(item.lon);
+          if (!Number.isFinite(parsedLat) || !Number.isFinite(parsedLng)) {
+            return null;
+          }
+
+          return {
+            placeName: item.name || item.display_name || query,
+            placeAddress: item.display_name || "",
+            latitude: parsedLat,
+            longitude: parsedLng,
+            source: "nominatim",
+          };
+        })
+        .filter(Boolean);
+
+      res.json({
+        suggestions,
+        status: "OK",
+      });
+    } catch (error) {
+      console.error("Map search failed", error);
+      res.status(500).json({ message: "Map search failed" });
+    }
+  });
+
   app.get("/api/mappls/autosuggest", async (req, res) => {
     try {
       const restKey = getMapplsRestKey();

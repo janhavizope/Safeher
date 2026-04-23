@@ -29,6 +29,7 @@ type Suggestion = {
   name?: string;
   formatted_address?: string;
   geometry?: { location?: LatLng };
+  source?: string;
 };
 
 type DirectionStep = {
@@ -324,6 +325,7 @@ export default function SafeRoute() {
   const routePathRef = useRef<LatLng[]>([]);
   const watchIdRef = useRef<number | null>(null);
   const searchDebounceRef = useRef<number | null>(null);
+  const latestSearchQueryRef = useRef<string>("");
   const lastRerouteAtRef = useRef<number>(0);
 
   const incidentsQuery = trpc.incidents.heatmapData.useQuery(
@@ -632,6 +634,56 @@ export default function SafeRoute() {
     }
   };
 
+  const fetchDestinationSuggestions = async (query: string) => {
+    if (query.trim().length < 3) {
+      setSuggestions([]);
+      return;
+    }
+
+    const params = new URLSearchParams({ query });
+    if (currentLocation) {
+      params.set("lat", String(currentLocation.lat));
+      params.set("lng", String(currentLocation.lng));
+    }
+
+    const [mapplsResult, osmResult] = await Promise.allSettled([
+      fetch(`/api/mappls/autosuggest?${params.toString()}`),
+      fetch(`/api/maps/search?${params.toString()}`),
+    ]);
+
+    const combined: Suggestion[] = [];
+
+    if (mapplsResult.status === "fulfilled" && mapplsResult.value.ok) {
+      const mapplsJson = (await mapplsResult.value.json()) as { suggestedLocations?: Suggestion[] };
+      combined.push(...(mapplsJson.suggestedLocations || []).map((item) => ({ ...item, source: "mappls" })));
+    }
+
+    if (osmResult.status === "fulfilled" && osmResult.value.ok) {
+      const osmJson = (await osmResult.value.json()) as { suggestions?: Suggestion[] };
+      combined.push(...(osmJson.suggestions || []).map((item) => ({ ...item, source: "nominatim" })));
+    }
+
+    if (latestSearchQueryRef.current.trim() !== query.trim()) {
+      return;
+    }
+
+    const deduped = new Map<string, Suggestion>();
+    for (const item of combined) {
+      const location = parseLatLng(item);
+      if (!location) {
+        continue;
+      }
+
+      const label = normalizeSuggestionLabel(item).trim().toLowerCase();
+      const key = `${location.lat.toFixed(5)}:${location.lng.toFixed(5)}:${label}`;
+      if (!deduped.has(key)) {
+        deduped.set(key, item);
+      }
+    }
+
+    setSuggestions(Array.from(deduped.values()).slice(0, 8));
+  };
+
   const handleDestinationSelect = async (item: Suggestion) => {
     const parsed = parseLatLng(item);
     if (!parsed) {
@@ -654,6 +706,25 @@ export default function SafeRoute() {
       return null;
     }
 
+    const normalizedQuery = query.toLowerCase().replace(/\s+/g, " ").trim();
+    const preferredSuggestion = suggestions.find((item) => {
+      const label = normalizeSuggestionLabel(item).toLowerCase().replace(/\s+/g, " ").trim();
+      return label === normalizedQuery || label.includes(normalizedQuery);
+    });
+
+    if (preferredSuggestion) {
+      const parsed = parseLatLng(preferredSuggestion);
+      if (parsed) {
+        const label = normalizeSuggestionLabel(preferredSuggestion);
+        setSelectedDestination(parsed);
+        setSelectedDestinationLabel(label);
+        setDestinationQuery(label);
+        setSuggestions([]);
+        placeDestinationMarker(parsed);
+        return parsed;
+      }
+    }
+
     const typedCoordinates = parseCoordinatesFromQuery(query);
     if (typedCoordinates) {
       setSelectedDestination(typedCoordinates);
@@ -663,7 +734,6 @@ export default function SafeRoute() {
       return typedCoordinates;
     }
 
-    const normalizedQuery = query.replace(/\s+/g, " ").trim();
     const queryVariants = Array.from(new Set([
       normalizedQuery,
       `${normalizedQuery}, Pune`,
@@ -708,6 +778,35 @@ export default function SafeRoute() {
 
     await planSafeRoute(destination);
   };
+
+  useEffect(() => {
+    if (searchDebounceRef.current !== null) {
+      window.clearTimeout(searchDebounceRef.current);
+    }
+
+    const query = destinationQuery.trim();
+    latestSearchQueryRef.current = query;
+
+    if (query.length < 3) {
+      setSuggestions([]);
+      return;
+    }
+
+    const selectedLabel = selectedDestinationLabel.trim().toLowerCase();
+    if (selectedDestination && query.toLowerCase() === selectedLabel) {
+      return;
+    }
+
+    searchDebounceRef.current = window.setTimeout(() => {
+      void fetchDestinationSuggestions(query);
+    }, 260);
+
+    return () => {
+      if (searchDebounceRef.current !== null) {
+        window.clearTimeout(searchDebounceRef.current);
+      }
+    };
+  }, [destinationQuery, currentLocation, selectedDestination, selectedDestinationLabel]);
 
   useEffect(() => {
     let mounted = true;
@@ -902,7 +1001,7 @@ export default function SafeRoute() {
                 Plan Safe Route
               </CardTitle>
               <CardDescription>
-                Destination search uses Mappls Autosuggest and routing prioritizes lower-risk paths.
+                Destination search uses smart nearby suggestions (like ride apps) and routing prioritizes lower-risk paths.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
