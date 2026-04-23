@@ -205,6 +205,25 @@ function normalizeSuggestionLabel(item: Suggestion): string {
   return item.placeName || item.name || item.placeAddress || item.formatted_address || "Selected destination";
 }
 
+function parseCoordinatesFromQuery(query: string): LatLng | null {
+  const match = query.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
+  if (!match) {
+    return null;
+  }
+
+  const lat = Number(match[1]);
+  const lng = Number(match[2]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return null;
+  }
+
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    return null;
+  }
+
+  return { lat, lng };
+}
+
 async function geocodeWithNominatim(query: string): Promise<LatLng | null> {
   const url = new URL("https://nominatim.openstreetmap.org/search");
   url.searchParams.set("q", query);
@@ -636,6 +655,15 @@ export default function SafeRoute() {
       return null;
     }
 
+    const typedCoordinates = parseCoordinatesFromQuery(query);
+    if (typedCoordinates) {
+      setSelectedDestination(typedCoordinates);
+      setSelectedDestinationLabel(query);
+      setSuggestions([]);
+      placeDestinationMarker(typedCoordinates);
+      return typedCoordinates;
+    }
+
     const queryVariants = [
       query,
       `${query}, Pune`,
@@ -758,6 +786,20 @@ export default function SafeRoute() {
         renderUserMarker(initialPosition);
         renderHeatmapOverlay();
         setIsMapReady(true);
+
+        map.on("click", (event: any) => {
+          const lat = Number(event?.latlng?.lat);
+          const lng = Number(event?.latlng?.lng);
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+            return;
+          }
+
+          const pinned = { lat, lng };
+          setSelectedDestination(pinned);
+          setSelectedDestinationLabel(`Pinned destination (${lat.toFixed(5)}, ${lng.toFixed(5)})`);
+          placeDestinationMarker(pinned);
+          toast.success("Destination pinned from map. Click Find Safest Route.");
+        });
 
         watchIdRef.current = navigator.geolocation.watchPosition(
           (position) => {
@@ -893,7 +935,13 @@ export default function SafeRoute() {
                 <label className="text-sm opacity-80 mb-2 block">Destination</label>
                 <Input
                   value={destinationQuery}
-                  onChange={(event) => setDestinationQuery(event.target.value)}
+                  onChange={(event) => {
+                    const nextValue = event.target.value;
+                    setDestinationQuery(nextValue);
+                    if (selectedDestination && nextValue.trim() !== selectedDestinationLabel.trim()) {
+                      setSelectedDestination(null);
+                    }
+                  }}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
                       event.preventDefault();
