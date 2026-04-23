@@ -190,56 +190,44 @@ function parseLatLng(candidate: Suggestion): LatLng | null {
   return null;
 }
 
-async function loadMapplsScript(mapKey: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (window.MapmyIndia) {
-      resolve();
-      return;
-    }
+const LEAFLET_CSS_ID = "safe-route-leaflet-css";
+const LEAFLET_JS_ID = "safe-route-leaflet-js";
+const LEAFLET_CSS_HREF = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+const LEAFLET_JS_SRC = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
 
-    const existing = document.getElementById("mappls-sdk") as HTMLScriptElement | null;
+function ensureLeafletCss() {
+  if (document.getElementById(LEAFLET_CSS_ID)) {
+    return;
+  }
+
+  const link = document.createElement("link");
+  link.id = LEAFLET_CSS_ID;
+  link.rel = "stylesheet";
+  link.href = LEAFLET_CSS_HREF;
+  document.head.appendChild(link);
+}
+
+async function loadLeaflet(): Promise<void> {
+  ensureLeafletCss();
+  if (window.L) {
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const existing = document.getElementById(LEAFLET_JS_ID) as HTMLScriptElement | null;
     if (existing) {
-      if (window.MapmyIndia) {
-        resolve();
-        return;
-      }
-
-      // Script may already be loaded before this listener is attached.
-      if ((existing as HTMLScriptElement).dataset.loaded === "true") {
-        const startedAt = Date.now();
-        const timer = window.setInterval(() => {
-          if (window.MapmyIndia) {
-            window.clearInterval(timer);
-            resolve();
-            return;
-          }
-
-          if (Date.now() - startedAt > 4000) {
-            window.clearInterval(timer);
-            reject(new Error("Mappls SDK failed to initialize."));
-          }
-        }, 100);
-        return;
-      }
-
-      existing.addEventListener("load", () => {
-        (existing as HTMLScriptElement).dataset.loaded = "true";
-        resolve();
-      }, { once: true });
-      existing.addEventListener("error", () => reject(new Error("Mappls SDK failed to load")), { once: true });
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error("Leaflet failed to load")), { once: true });
       return;
     }
 
     const script = document.createElement("script");
-    script.id = "mappls-sdk";
-    script.src = `https://apis.mapmyindia.com/advancedmaps/v1/${encodeURIComponent(mapKey)}/map_load?v=1.5`;
+    script.id = LEAFLET_JS_ID;
+    script.src = LEAFLET_JS_SRC;
     script.async = true;
     script.defer = true;
-    script.onload = () => {
-      script.dataset.loaded = "true";
-      resolve();
-    };
-    script.onerror = () => reject(new Error("Mappls SDK failed to load"));
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Leaflet failed to load"));
     document.head.appendChild(script);
   });
 }
@@ -550,15 +538,10 @@ export default function SafeRoute() {
           mapsApiKey?: string;
         };
 
-        const mapKey = config.mapplsMapApiKey || config.mapplsRestApiKey || config.mapsApiKey || "";
         console.log("[SafeRoute] Map config loaded", {
           mapplsMapApiKey: config.mapplsMapApiKey ? "SET" : "EMPTY",
           mapplsRestApiKey: config.mapplsRestApiKey ? "SET" : "EMPTY",
-          selectedMapKey: mapKey ? "VALID" : "EMPTY",
         });
-        if (!mapKey) {
-          throw new Error("Mappls key missing. Set MAPPLS_REST_API_KEY (or MAPPLS_MAP_SDK_KEY).");
-        }
 
         const initialPosition = await new Promise<LatLng>((resolve) => {
           if (!navigator.geolocation) {
@@ -585,22 +568,23 @@ export default function SafeRoute() {
           );
         });
 
-        await loadMapplsScript(mapKey);
+        await loadLeaflet();
         if (!mounted) {
           return;
         }
 
-        if (!window.MapmyIndia) {
-          throw new Error("Mappls SDK did not initialize.");
+        if (!window.L) {
+          throw new Error("Leaflet did not initialize.");
         }
 
-        const map = new window.MapmyIndia.Map("safe-route-map", {
-          center: [initialPosition.lat, initialPosition.lng],
-          zoom: 14,
+        const map = window.L.map("safe-route-map", {
           zoomControl: true,
-          hybrid: false,
-          traffic: true,
-        });
+        }).setView([initialPosition.lat, initialPosition.lng], 14);
+
+        window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          maxZoom: 19,
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        }).addTo(map);
 
         mapRef.current = map;
         setCurrentLocation(initialPosition);
