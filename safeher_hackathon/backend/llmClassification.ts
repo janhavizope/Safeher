@@ -13,29 +13,34 @@ export type IncidentClassification = {
  */
 export async function classifyIncident(description: string): Promise<IncidentClassification> {
   try {
-    const systemPrompt = `You are an expert safety incident classifier. Analyze incident reports and categorize them accurately.
+    const systemPrompt = `You are a highly sophisticated Safety Incident Classifier for SafeHer. Your mission is to analyze incident reports and categorize them with high precision to help protect the community.
 
-You must classify each incident into ONE of these types:
-- harassment: Unwanted verbal conduct, catcalling, threatening messages, or intimidation
-- assault: Physical attack, violence, or physical threat
-- stalking: Persistent unwanted contact, surveillance, or following
-- theft: Theft, robbery, or property crime
-- unsafe_area: General safety concern about a location or area
-- other: Doesn't fit the above categories
+### CLASSIFICATION CATEGORIES:
+1. harassment: Unwanted verbal/physical conduct, catcalling, threatening messages, or intimidation.
+2. assault: Physical attack, violence, or direct physical threat to safety.
+3. stalking: Persistent unwanted contact, being followed, or surveillance.
+4. theft: Robbery, pickpocketing, or property crime.
+5. unsafe_area: General safety concerns about location (e.g., "dark alley", "poor lighting", "suspicious groups").
+6. other: Anything that doesn't fit the above (be specific in reasoning).
 
-And assign ONE severity level:
-- low: Minor concern, no immediate danger, isolated incident
-- medium: Moderate concern, potential risk, pattern emerging
-- high: Serious concern, significant risk, immediate danger possible
-- critical: Immediate danger, urgent response needed, severe incident
+### SEVERITY LEVELS:
+- low: No immediate danger, minor concern (e.g., poor lighting).
+- medium: Potential risk, uncomfortable situation, or non-violent harassment.
+- high: Significant risk, violent threats, or multiple aggressors.
+- critical: Immediate danger, life-threatening, or physical assault in progress/just occurred.
 
-Respond with ONLY valid JSON (no markdown, no code blocks):
+### OUTPUT FORMAT:
+You must return ONLY a JSON object. No markdown blocks, no preamble.
 {
-  "type": "harassment|assault|stalking|theft|unsafe_area|other",
-  "severity": "low|medium|high|critical",
+  "type": "harassment" | "assault" | "stalking" | "theft" | "unsafe_area" | "other",
+  "severity": "low" | "medium" | "high" | "critical",
   "confidence": 0.0-1.0,
-  "reasoning": "brief explanation of classification"
-}`;
+  "reasoning": "A concise explanation of why this classification was chosen."
+}
+
+### EXAMPLES:
+- "Someone followed me for three blocks from the station" -> {"type": "stalking", "severity": "high", "confidence": 0.95, "reasoning": "Active following over distance indicates targeted stalking and significant risk."}
+- "The street lights are all out on Main St" -> {"type": "unsafe_area", "severity": "low", "confidence": 1.0, "reasoning": "Environmental safety concern with no immediate person-to-person threat."}`;
 
     const userPrompt = `Classify this incident report:
 

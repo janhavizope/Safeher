@@ -35,6 +35,7 @@ import { notifyOwner } from "./_core/notification";
 import { classifyIncident } from "./llmClassification";
 import {
   generateRandomSuffix,
+  getClientDeviceId,
   getClientIp,
   hashIp,
   isValidFileSize,
@@ -127,9 +128,9 @@ export const appRouter = router({
           description: z.string().min(10).max(5000),
           incidentType: z.enum(["harassment", "assault", "stalking", "theft", "unsafe_area", "other"]).optional(),
           severity: z.enum(["low", "medium", "high", "critical"]).optional(),
-          reportedAt: z.date(),
+          reportedAt: z.coerce.date(),
           mediaUrls: z.array(z.string().min(1)).optional(),
-          reporterAlias: z.string().min(1).max(100).optional(),
+          reporterAlias: z.string().max(100).optional(),
           media: z
             .array(
               z.object({
@@ -195,7 +196,7 @@ export const appRouter = router({
             status: "pending",
             llmClassification: classification ? (classification as any) : null,
             trackingPin,
-            reporterAlias: input.reporterAlias,
+            reporterAlias: input.reporterAlias?.trim() || null,
           });
 
           if (!incident) {
@@ -793,12 +794,32 @@ export const appRouter = router({
   community: router({
     createPost: publicProcedure
       .input(z.object({ 
-        authorAlias: z.string().min(1), 
+        authorAlias: z.string().max(100).optional(), 
         category: z.string(), 
-        content: z.string().min(1) 
+        content: z.string().min(1),
+        media: z
+          .array(
+            z.object({
+              key: z.string().min(1),
+              url: z.string().min(1),
+              mimeType: z.string().min(1),
+              fileSize: z.number().int().positive(),
+            })
+          )
+          .max(4)
+          .optional(),
       }))
-      .mutation(async ({ input }) => {
-        const post = await createCommunityPost(input.authorAlias, input.category, input.content);
+      .mutation(async ({ input, ctx }) => {
+        const deviceId = getClientDeviceId(ctx.req);
+        if (!deviceId) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Only verified users can post in Sisterhood Hub.",
+          });
+        }
+
+        const normalizedAlias = input.authorAlias?.trim() || `Anonymous Sister ${Math.floor(1000 + Math.random() * 9000)}`;
+        const post = await createCommunityPost(normalizedAlias, input.category, input.content, input.media ?? []);
         return post;
       }),
 

@@ -12,6 +12,22 @@ type LatLng = {
   lng: number;
 };
 
+function isValidLatLng(lat: number, lng: number): boolean {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return false;
+  if (Math.abs(lat) < 0.000001 && Math.abs(lng) < 0.000001) return false;
+  return true;
+}
+
+function parseLatLng(latValue: unknown, lngValue: unknown): LatLng | null {
+  const lat = Number(latValue);
+  const lng = Number(lngValue);
+  if (!isValidLatLng(lat, lng)) {
+    return null;
+  }
+  return { lat, lng };
+}
+
 export default function MapViewer() {
   const [, setLocation] = useLocation();
   const mapRef = useRef<any | null>(null);
@@ -88,7 +104,12 @@ export default function MapViewer() {
 
     // Add new markers
     incidentsQuery.data.incidents.forEach((incident: any) => {
-      const marker = window.L.circleMarker([incident.latitude, incident.longitude], {
+      const coords = parseLatLng(incident.latitude, incident.longitude);
+      if (!coords) {
+        return;
+      }
+
+      const marker = window.L.circleMarker([coords.lat, coords.lng], {
         radius: 7,
         color: "#0f172a",
         weight: 1,
@@ -120,13 +141,12 @@ export default function MapViewer() {
     volunteerMarkersRef.current = [];
 
     volunteersQuery.data.volunteers.forEach((v: any) => {
-      const lat = Number(v.latitude);
-      const lng = Number(v.longitude);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      const coords = parseLatLng(v.latitude, v.longitude);
+      if (!coords) {
         return;
       }
 
-      const marker = window.L.circleMarker([lat, lng], {
+      const marker = window.L.circleMarker([coords.lat, coords.lng], {
         radius: 6,
         color: "#059669",
         weight: 1,
@@ -167,15 +187,22 @@ export default function MapViewer() {
     if (!showHeatmap) return;
 
     // Render weighted circles as a lightweight heatmap approximation in Leaflet.
-    const circles = heatmapQuery.data.heatmapPoints.map((point: any) =>
-      window.L.circle([point.latitude, point.longitude], {
-        radius: Math.min(500, 120 + point.weight * 40),
-        color: "#f97316",
-        weight: 0,
-        fillColor: "#f97316",
-        fillOpacity: Math.min(0.45, 0.08 + point.weight * 0.03),
+    const circles = heatmapQuery.data.heatmapPoints
+      .map((point: any) => {
+        const coords = parseLatLng(point.latitude, point.longitude);
+        if (!coords) {
+          return null;
+        }
+
+        return window.L.circle([coords.lat, coords.lng], {
+          radius: Math.min(500, 120 + point.weight * 40),
+          color: "#f97316",
+          weight: 0,
+          fillColor: "#f97316",
+          fillOpacity: Math.min(0.45, 0.08 + point.weight * 0.03),
+        });
       })
-    );
+      .filter(Boolean);
     const newHeatmap = window.L.layerGroup(circles).addTo(mapRef.current);
 
     setHeatmapLayer(newHeatmap);
@@ -351,7 +378,11 @@ export default function MapViewer() {
                       className="w-full text-left rounded-xl border border-rose-100 bg-white px-3 py-3 hover:border-rose-300 hover:bg-rose-50 transition-all shadow-sm"
                       onClick={() => {
                         if (!mapRef.current) return;
-                        mapRef.current.setView([incident.latitude, incident.longitude], Math.max(mapRef.current.getZoom() || 12, 14));
+                        const coords = parseLatLng(incident.latitude, incident.longitude);
+                        if (!coords) {
+                          return;
+                        }
+                        mapRef.current.setView([coords.lat, coords.lng], Math.max(mapRef.current.getZoom() || 12, 14));
                       }}
                     >
                       <p className="text-gray-900 text-sm font-bold capitalize mb-1">

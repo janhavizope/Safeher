@@ -1,0 +1,23 @@
+{
+  "incidents": [
+    {
+      "id": 1,
+      "latitude": "18.548756744711582",
+      "longitude": "73.93563482080644",
+      "incidentType": "stalking",
+      "severity": "high",
+      "description": "i have been stalking from kast few days",
+      "mediaUrls": [],
+      "reportedAt": "2026-04-23T20:21:00.000Z",
+      "submittedAt": "2026-04-24T20:23:41.710Z",
+      "ipHash": "eff8e7ca506627fe15dda5e0e512fcaad70b6d520f37cc76597fdb4f2d83a1a3",
+      "status": "pending",
+      "adminNotes": null,
+      "llmClassification": null,
+      "trackingPin": "3CBBMI",
+      "reporterAlias": "Golden Oak 68",
+      "evidenceScore": 0
+    }
+  ],
+  "nextIncidentId": 2
+}

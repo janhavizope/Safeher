@@ -76,6 +76,8 @@ declare global {
 const REROUTE_DISTANCE_METERS = 120;
 const REROUTE_COOLDOWN_MS = 8000;
 const LIVE_TRACK_PUSH_INTERVAL_MS = 5000;
+const MAX_ACCEPTABLE_GPS_ACCURACY_M = 250;
+const DEFAULT_MAP_CENTER: LatLng = { lat: 20.5937, lng: 78.9629 };
 
 function decodePolyline(encoded: string, precision = 5): LatLng[] {
   let index = 0;
@@ -406,6 +408,12 @@ export default function SafeRoute() {
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        const accuracy = Math.max(1, position.coords.accuracy || 9999);
+        if (accuracy > MAX_ACCEPTABLE_GPS_ACCURACY_M) {
+          toast.error("GPS signal is weak. Move to open sky and retry.");
+          return;
+        }
+
         const updatedLocation = {
           lat: position.coords.latitude,
           lng: position.coords.longitude,
@@ -416,7 +424,7 @@ export default function SafeRoute() {
         if (mapRef.current) {
           mapRef.current.setView([updatedLocation.lat, updatedLocation.lng], Math.max(mapRef.current.getZoom(), 14));
         }
-        toast.success("Using your live GPS location as source.");
+        toast.success(`Using your live GPS location as source (±${Math.round(accuracy)}m).`);
       },
       () => {
         toast.error("Could not read your GPS location right now.");
@@ -833,22 +841,31 @@ export default function SafeRoute() {
           mapplsRestApiKey: config.mapplsRestApiKey ? "SET" : "EMPTY",
         });
 
-        const initialPosition = await new Promise<LatLng>((resolve) => {
+        const initialPosition = await new Promise<{ center: LatLng; hasLiveFix: boolean }>((resolve) => {
           if (!navigator.geolocation) {
-            resolve({ lat: 19.076, lng: 72.8777 });
+            resolve({ center: DEFAULT_MAP_CENTER, hasLiveFix: false });
             return;
           }
 
           navigator.geolocation.getCurrentPosition(
             (position) => {
+              const accuracy = Math.max(1, position.coords.accuracy || 9999);
+              if (accuracy > MAX_ACCEPTABLE_GPS_ACCURACY_M) {
+                resolve({ center: DEFAULT_MAP_CENTER, hasLiveFix: false });
+                return;
+              }
+
               resolve({
-                lat: position.coords.latitude,
-                lng: position.coords.longitude,
+                center: {
+                  lat: position.coords.latitude,
+                  lng: position.coords.longitude,
+                },
+                hasLiveFix: true,
               });
             },
             () => {
               // Do not block map init if GPS permission is denied/unavailable.
-              resolve({ lat: 19.076, lng: 72.8777 });
+              resolve({ center: DEFAULT_MAP_CENTER, hasLiveFix: false });
             },
             {
               enableHighAccuracy: true,
@@ -869,7 +886,7 @@ export default function SafeRoute() {
 
         const map = window.L.map("safe-route-map", {
           zoomControl: true,
-        }).setView([initialPosition.lat, initialPosition.lng], 14);
+        }).setView([initialPosition.center.lat, initialPosition.center.lng], initialPosition.hasLiveFix ? 14 : 5);
 
         window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
           maxZoom: 19,
@@ -877,8 +894,10 @@ export default function SafeRoute() {
         }).addTo(map);
 
         mapRef.current = map;
-        setCurrentLocation(initialPosition);
-        renderUserMarker(initialPosition);
+        if (initialPosition.hasLiveFix) {
+          setCurrentLocation(initialPosition.center);
+          renderUserMarker(initialPosition.center);
+        }
         renderHeatmapOverlay();
         setIsMapReady(true);
 
@@ -898,6 +917,11 @@ export default function SafeRoute() {
 
         watchIdRef.current = navigator.geolocation.watchPosition(
           (position) => {
+            const accuracy = Math.max(1, position.coords.accuracy || 9999);
+            if (accuracy > MAX_ACCEPTABLE_GPS_ACCURACY_M) {
+              return;
+            }
+
             const updatedLocation = {
               lat: position.coords.latitude,
               lng: position.coords.longitude,

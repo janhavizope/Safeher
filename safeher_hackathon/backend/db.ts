@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 import path from "node:path";
+import { promises as fs } from "node:fs";
 import { InsertUser, users, incidents, InsertIncident, Incident, rateLimitLog, mediaAttachments, alertSubscriptions, auditLogs, InsertAuditLog, AuditLog, safeWalkSessions, communityPosts } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -27,6 +28,22 @@ type RateLimitLogRecord = {
   attemptedAt: Date;
 };
 
+type CommunityPostRecord = {
+  id: number;
+  authorAlias: string;
+  category: string;
+  content: string;
+  createdAt: Date;
+  mediaUrls?: CommunityMediaRecord[];
+};
+
+type CommunityMediaRecord = {
+  key: string;
+  url: string;
+  mimeType: string;
+  fileSize: number;
+};
+
 const localStore = {
   incidents: [] as IncidentRecord[],
   mediaAttachments: [] as MediaAttachmentRecord[],
@@ -38,7 +55,55 @@ const localStore = {
   auditLogs: [] as AuditLog[],
   nextAuditId: 1,
   safeWalkSessions: [] as any[],
+  communityPosts: [] as CommunityPostRecord[],
+  communityPostMedia: {} as Record<number, CommunityMediaRecord[]>,
+  nextCommunityPostId: 1,
 };
+
+const LOCAL_STORE_FILE = path.resolve(process.cwd(), ".local-incidents.json");
+let _localStoreLoaded = false;
+
+async function ensureLocalIncidentStoreLoaded(): Promise<void> {
+  if (_localStoreLoaded) return;
+  _localStoreLoaded = true;
+
+  try {
+    const raw = await fs.readFile(LOCAL_STORE_FILE, "utf8");
+    const parsed = JSON.parse(raw) as {
+      incidents?: IncidentRecord[];
+      nextIncidentId?: number;
+    };
+
+    if (Array.isArray(parsed.incidents)) {
+      localStore.incidents = parsed.incidents.map(item => ({
+        ...item,
+        reportedAt: new Date(item.reportedAt as any),
+        submittedAt: new Date(item.submittedAt as any),
+      }));
+    }
+
+    if (typeof parsed.nextIncidentId === "number" && parsed.nextIncidentId > 0) {
+      localStore.nextIncidentId = parsed.nextIncidentId;
+    } else {
+      const maxId = localStore.incidents.reduce((max, incident) => Math.max(max, Number(incident.id) || 0), 0);
+      localStore.nextIncidentId = maxId + 1;
+    }
+  } catch {
+    // First run or invalid file: keep defaults.
+  }
+}
+
+async function persistLocalIncidentStore(): Promise<void> {
+  try {
+    const payload = {
+      incidents: localStore.incidents,
+      nextIncidentId: localStore.nextIncidentId,
+    };
+    await fs.writeFile(LOCAL_STORE_FILE, JSON.stringify(payload, null, 2), "utf8");
+  } catch (error) {
+    console.warn("[Database] Failed to persist local incident store:", error);
+  }
+}
 
 function toNumber(value: unknown): number {
   if (typeof value === "number") return value;
@@ -86,6 +151,7 @@ export async function getDb() {
   }
 
   if (!process.env.DATABASE_URL) {
+    await ensureLocalIncidentStoreLoaded();
     return null;
   }
 
@@ -240,6 +306,7 @@ export async function createIncident(data: InsertIncident): Promise<Incident | n
     created.evidenceScore = score;
 
     localStore.incidents.push(created);
+    await persistLocalIncidentStore();
     return created;
   }
 
@@ -258,8 +325,30 @@ export async function createIncident(data: InsertIncident): Promise<Incident | n
     const created = await db.insert(incidents).values(dataWithScore as any).returning();
     return created.length > 0 ? created[0] : null;
   } catch (error) {
-    console.error("[Database] Failed to create incident:", error);
-    throw error;
+    console.warn("[Database] Failed to create incident in PostgreSQL, using local fallback:", error);
+
+    const created: IncidentRecord = {
+      id: localStore.nextIncidentId++,
+      latitude: String(data.latitude ?? "0") as any,
+      longitude: String(data.longitude ?? "0") as any,
+      incidentType: (data.incidentType ?? "other") as any,
+      severity: (data.severity ?? "medium") as any,
+      description: data.description ?? "",
+      mediaUrls: parseJsonArray(data.mediaUrls),
+      reportedAt: data.reportedAt ?? new Date(),
+      submittedAt: data.submittedAt ?? new Date(),
+      ipHash: data.ipHash ?? "",
+      status: (data.status ?? "pending") as any,
+      adminNotes: (data.adminNotes as any) ?? null,
+      llmClassification: (data.llmClassification as any) ?? null,
+      trackingPin: (data.trackingPin as any) ?? null,
+      reporterAlias: (data.reporterAlias as any) ?? null,
+      evidenceScore: 0,
+    };
+
+    localStore.incidents.push(created);
+    await persistLocalIncidentStore();
+    return created;
   }
 }
 
@@ -668,6 +757,7 @@ export async function updateIncidentStatus(
     if (!target) return null;
     target.status = status as any;
     target.adminNotes = appendStatusHistoryEvent(target.adminNotes, status, actorName, notes);
+    await persistLocalIncidentStore();
     
     await createAuditLog({
       incidentId,
@@ -722,6 +812,7 @@ export async function updateIncidentDetails(
     if (data.latitude !== undefined) target.latitude = String(data.latitude) as any;
     if (data.longitude !== undefined) target.longitude = String(data.longitude) as any;
     if (data.status !== undefined) target.status = data.status;
+    await persistLocalIncidentStore();
 
     await createAuditLog({
       incidentId,
@@ -848,6 +939,10 @@ export async function getOverlappingSubscriptions(lat: number, lng: number) {
  * Check if IP has exceeded rate limit
  */
 export async function checkRateLimit(ipHash: string, endpoint: string = 'incidents.submit'): Promise<boolean> {
+  if (process.env.NODE_ENV !== "production") {
+    return false;
+  }
+
   const db = await getDb();
   if (!db) {
     const oneHourAgo = Date.now() - 60 * 60 * 1000;
@@ -1015,6 +1110,7 @@ export async function bulkUpdateIncidentStatus(
         updated.push(incident);
       }
     }
+    await persistLocalIncidentStore();
     
     await createAuditLog({
       actorName: actorName || "Moderator",
@@ -1138,11 +1234,63 @@ export async function getSafeWalkByToken(token: string) {
 /**
  * Create a community post
  */
-export async function createCommunityPost(authorAlias: string, category: string, content: string) {
+export async function createCommunityPost(
+  authorAlias: string,
+  category: string,
+  content: string,
+  mediaUrls: CommunityMediaRecord[] = [],
+) {
   const db = await getDb();
-  if (!db) return null;
-  const result = await db.insert(communityPosts).values({ authorAlias, category, content }).returning();
-  return result.length > 0 ? result[0] : null;
+  if (!db) {
+    const created: CommunityPostRecord = {
+      id: localStore.nextCommunityPostId++,
+      authorAlias,
+      category,
+      content,
+      createdAt: new Date(),
+      mediaUrls,
+    };
+    localStore.communityPosts.unshift(created);
+    return created;
+  }
+
+  try {
+    const result = await db
+      .insert(communityPosts)
+      .values({
+        authorAlias,
+        category,
+        content,
+        mediaUrls,
+      } as any)
+      .returning();
+    return result.length > 0 ? result[0] : null;
+  } catch (error) {
+    try {
+      const retry = await db.insert(communityPosts).values({ authorAlias, category, content }).returning();
+      const created = retry.length > 0 ? retry[0] : null;
+      if (created && mediaUrls.length > 0) {
+        localStore.communityPostMedia[created.id] = mediaUrls;
+        return {
+          ...created,
+          mediaUrls,
+        };
+      }
+      return created;
+    } catch (retryError) {
+      console.warn("[Database] community_posts insert failed, using local fallback:", retryError || error);
+      const created: CommunityPostRecord = {
+        id: localStore.nextCommunityPostId++,
+        authorAlias,
+        category,
+        content,
+        createdAt: new Date(),
+        mediaUrls,
+      };
+      localStore.communityPosts.unshift(created);
+      return created;
+    }
+  }
 }
 
 /**
@@ -1150,6 +1298,28 @@ export async function createCommunityPost(authorAlias: string, category: string,
  */
 export async function getCommunityPosts(limit: number = 50) {
   const db = await getDb();
-  if (!db) return [];
-  return await db.select().from(communityPosts).orderBy(desc(communityPosts.createdAt)).limit(limit);
+  if (!db) {
+    return localStore.communityPosts
+      .slice()
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, limit);
+  }
+
+  try {
+    const rows = await db.select().from(communityPosts).orderBy(desc(communityPosts.createdAt)).limit(limit);
+    return rows.map((row: any) => {
+      const rowMedia = Array.isArray(row.mediaUrls) ? row.mediaUrls : [];
+      const fallbackMedia = localStore.communityPostMedia[row.id] || [];
+      return {
+        ...row,
+        mediaUrls: rowMedia.length > 0 ? rowMedia : fallbackMedia,
+      };
+    });
+  } catch (error) {
+    console.warn("[Database] community_posts query failed, using local fallback:", error);
+    return localStore.communityPosts
+      .slice()
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, limit);
+  }
 }

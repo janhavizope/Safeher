@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ActivityIndicator, Alert, Platform } from 'react-native';
-import Geolocation from 'react-native-geolocation-service';
 import { check, request, PERMISSIONS, RESULTS } from 'react-native-permissions';
 import MapView from './components/MapView';
 import SearchBar from './components/SearchBar';
@@ -10,7 +9,7 @@ import { useLocation } from './hooks/useLocation';
 import { useRoute } from './hooks/useRoute';
 
 export default function App() {
-  const [loading, setLoading] = useState(false);
+  const [loading] = useState(false);
   const { location, startTracking } = useLocation();
   const { route, planRoute, isPlanning } = useRoute();
 
@@ -40,10 +39,21 @@ export default function App() {
     }
   };
 
-  const handleDestinationSelect = (place) => {
-    if (location) {
-      planRoute(location, place.geometry?.location || { lat: 28.6139, lng: 77.209 });
+  const handleDestinationSelect = (place: any) => {
+    if (!location) {
+      Alert.alert('Location unavailable', 'Waiting for your current GPS fix. Try again in a moment.');
+      return;
     }
+
+    const lat = Number(place?.geometry?.location?.lat);
+    const lng = Number(place?.geometry?.location?.lng);
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      Alert.alert('Invalid destination', 'Could not read destination coordinates from search result.');
+      return;
+    }
+
+    planRoute(location, { lat, lng });
   };
 
   return (
