@@ -10,6 +10,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { toast } from "sonner";
 import { useStealth } from "@/contexts/StealthContext";
+import { attemptAdminPasscode, clearAdminAuth, getAdminAuthSnapshot } from "@shared/adminAuth";
 
 export default function Admin() {
   const [, setLocation] = useLocation();
@@ -28,6 +29,7 @@ export default function Admin() {
   const [selectedIncidents, setSelectedIncidents] = useState<Set<number>>(new Set());
   const [activeTab, setActiveTab] = useState<'reports' | 'audit'>('reports');
   const [filterEscalated, setFilterEscalated] = useState(false);
+  const [adminLockState, setAdminLockState] = useState(() => getAdminAuthSnapshot(window.localStorage));
 
   const updateStatusMutation = trpc.admin.updateStatus.useMutation({
     onSuccess: async () => {
@@ -59,19 +61,37 @@ export default function Admin() {
   });
 
   const [passcode, setPasscode] = useState("");
-  const [isAuthorized, setIsAuthorized] = useState(() => localStorage.getItem('safeher_admin_auth') === 'true');
+  const [isAuthorized, setIsAuthorized] = useState(() => adminLockState.isAuthorized);
 
   const checkPasscode = (e: React.FormEvent) => {
     e.preventDefault();
-    if (passcode === "safeher2026") {
+    const result = attemptAdminPasscode(window.localStorage, passcode);
+    setAdminLockState(result.snapshot);
+
+    if (result.status === "success") {
       setIsAuthorized(true);
-      localStorage.setItem('safeher_admin_auth', 'true');
       toast.success("Moderator Access Granted");
+    } else if (result.status === "locked") {
+      const lockMinutes = Math.ceil(result.snapshot.remainingLockMs / 60000);
+      toast.error(`Too many failed attempts. Try again in ${lockMinutes} minute${lockMinutes === 1 ? "" : "s"}.`);
     } else {
-      toast.error("Invalid Moderator Code");
-      setPasscode("");
+      toast.error(`Invalid Moderator Code. ${result.snapshot.remainingAttempts} attempt${result.snapshot.remainingAttempts === 1 ? "" : "s"} left before a 1 hour lock.`);
     }
+
+    setPasscode("");
   };
+
+  useEffect(() => {
+    if (!adminLockState.isLocked) return;
+
+    const timeout = window.setTimeout(() => {
+      const nextState = getAdminAuthSnapshot(window.localStorage);
+      setAdminLockState(nextState);
+      setIsAuthorized(nextState.isAuthorized);
+    }, adminLockState.remainingLockMs + 1000);
+
+    return () => window.clearTimeout(timeout);
+  }, [adminLockState.isLocked, adminLockState.remainingLockMs]);
 
   // Auth check disabled for hackathon demo
   useEffect(() => {
@@ -230,6 +250,11 @@ export default function Admin() {
           </CardHeader>
           <CardContent>
             <form onSubmit={checkPasscode} className="space-y-4">
+              {adminLockState.isLocked && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-medium text-rose-900">
+                  Access locked for {Math.max(1, Math.ceil(adminLockState.remainingLockMs / 60000))} minute{Math.max(1, Math.ceil(adminLockState.remainingLockMs / 60000)) === 1 ? "" : "s"} after 5 failed attempts.
+                </div>
+              )}
               <div className="space-y-2">
                  <Input 
                    type="password" 
@@ -238,9 +263,10 @@ export default function Admin() {
                    onChange={(e) => setPasscode(e.target.value)}
                    className="bg-white border-rose-200 text-rose-950 text-center text-xl tracking-[0.5em] h-14 focus:border-rose-400 transition-all placeholder:tracking-normal placeholder:opacity-30"
                    autoFocus
+                   disabled={adminLockState.isLocked}
                  />
               </div>
-              <Button type="submit" className="w-full bg-rose-950 hover:bg-rose-900 text-white h-14 font-bold text-lg transition-transform active:scale-95 shadow-lg">
+              <Button type="submit" className="w-full bg-rose-950 hover:bg-rose-900 text-white h-14 font-bold text-lg transition-transform active:scale-95 shadow-lg disabled:opacity-60" disabled={adminLockState.isLocked}>
                 Authorize Session
               </Button>
             </form>
@@ -355,7 +381,9 @@ export default function Admin() {
             variant="ghost" 
             onClick={() => {
               logout();
-              localStorage.removeItem('safeher_admin_auth');
+              clearAdminAuth(window.localStorage);
+              setAdminLockState(getAdminAuthSnapshot(window.localStorage));
+              setIsAuthorized(false);
               setLocation("/");
             }} 
             className="w-full justify-start text-rose-700/60 hover:text-rose-950 hover:bg-rose-50 rounded-xl px-4 py-6"

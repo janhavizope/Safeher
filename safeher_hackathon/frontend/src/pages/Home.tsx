@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useSafetySentinel } from "@/contexts/SafetySentinel";
 import { Mic, Activity, Users, ShieldCheck, Share2, HeartPulse, ChevronRight } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { attemptAdminPasscode, getAdminAuthSnapshot } from "@shared/adminAuth";
 
 export default function Home() {
   const { user } = useAuth();
@@ -19,6 +20,7 @@ export default function Home() {
   const [scrolled, setScrolled] = useState(false);
   const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [adminCode, setAdminCode] = useState("");
+  const [adminLockState, setAdminLockState] = useState(() => getAdminAuthSnapshot(window.localStorage));
   const { loudness, isMonitoring, setMonitoring, isListening } = useSafetySentinel();
   const [lastTap, setLastTap] = useState(0);
   const [tapCount, setTapCount] = useState(0);
@@ -77,14 +79,31 @@ export default function Home() {
 
   const handleAdminVerify = (e: React.FormEvent) => {
     e.preventDefault();
-    if (adminCode === "safeher2026") {
-      localStorage.setItem('safeher_admin_auth', 'true');
+    const result = attemptAdminPasscode(window.localStorage, adminCode);
+    setAdminLockState(result.snapshot);
+
+    if (result.status === "success") {
       setLocation("/admin");
+      toast.success("Moderator Access Granted");
+    } else if (result.status === "locked") {
+      const lockMinutes = Math.ceil(result.snapshot.remainingLockMs / 60000);
+      toast.error(`Too many failed attempts. Try again in ${lockMinutes} minute${lockMinutes === 1 ? "" : "s"}.`);
     } else {
       toast.error("Invalid Secret Access Code");
-      setAdminCode("");
     }
+
+    setAdminCode("");
   };
+
+  useEffect(() => {
+    if (!adminLockState.isLocked) return;
+
+    const timeout = window.setTimeout(() => {
+      setAdminLockState(getAdminAuthSnapshot(window.localStorage));
+    }, adminLockState.remainingLockMs + 1000);
+
+    return () => window.clearTimeout(timeout);
+  }, [adminLockState.isLocked, adminLockState.remainingLockMs]);
 
 
   return (
@@ -366,6 +385,11 @@ export default function Home() {
              </CardHeader>
              <CardContent className="pt-4">
                 <form onSubmit={handleAdminVerify} className="space-y-4">
+                   {adminLockState.isLocked && (
+                     <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-medium text-rose-900">
+                       Access locked for {Math.max(1, Math.ceil(adminLockState.remainingLockMs / 60000))} minute{Math.max(1, Math.ceil(adminLockState.remainingLockMs / 60000)) === 1 ? "" : "s"} after 5 failed attempts.
+                     </div>
+                   )}
                    <div className="space-y-2">
                       <Input 
                         type="password" 
@@ -374,6 +398,7 @@ export default function Home() {
                         value={adminCode}
                         onChange={(e) => setAdminCode(e.target.value)}
                         className="bg-white/5 border-white/10 text-white text-center text-lg tracking-[0.5em] h-12 focus:border-rose-300/50 transition-all placeholder:tracking-normal placeholder:opacity-30"
+                        disabled={adminLockState.isLocked}
                       />
                    </div>
                    <div className="flex gap-2">
@@ -387,7 +412,8 @@ export default function Home() {
                       </Button>
                       <Button 
                         type="submit" 
-                        className="flex-1 bg-white text-rose-950 font-bold hover:bg-rose-100 transition-colors"
+                        className="flex-1 bg-white text-rose-950 font-bold hover:bg-rose-100 transition-colors disabled:opacity-60"
+                        disabled={adminLockState.isLocked}
                       >
                         Authorize
                       </Button>

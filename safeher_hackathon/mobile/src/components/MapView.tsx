@@ -9,11 +9,14 @@ interface MapViewProps {
 
 // Placeholder MapView - will integrate actual Mappls SDK
 export default function MapView({ location, route, isLoading }: MapViewProps) {
+  const accuracyText =
+    typeof location?.accuracy === 'number' ? ` (±${Math.round(location.accuracy)}m)` : '';
+
   return (
     <View style={styles.container}>
       <Text style={styles.text}>
         {location
-          ? `📍 Location: ${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`
+          ? `📍 Location: ${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}${accuracyText}`
           : 'Getting location...'}
       </Text>
       {route && (
